@@ -1,0 +1,17 @@
+{
+  "name": "海況去不去",
+  "short_name": "海況去不去",
+  "description": "台灣潛點今日海況與 AI 白話建議",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0284c7",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

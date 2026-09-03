@@ -1,0 +1,54 @@
+# 正式本地開發環境：Postgres + 後端 + 前端。
+# 用法：docker compose up --build
+# 尚未安裝 Docker 也沒關係，README 有不用 Docker 的跑法（後端自動退回 SQLite）。
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: sea
+      POSTGRES_PASSWORD: sea
+      POSTGRES_DB: sea
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sea"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://sea:sea@db:5432/sea
+      CWA_API_KEY: ${CWA_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      USE_LLM: ${USE_LLM:-false}
+      LLM_MODEL: ${LLM_MODEL:-claude-opus-5}
+      CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    volumes:
+      - ./backend/app:/app/app
+
+  frontend:
+    build: ./frontend
+    environment:
+      NEXT_PUBLIC_API_BASE: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+
+volumes:
+  pgdata:
