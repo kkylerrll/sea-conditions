@@ -1,0 +1,20 @@
+name: 每日更新海況
+
+# 每天台灣時間 05:30 和 12:30 各跑一次（UTC 21:30 前一天、04:30）
+on:
+  schedule:
+    - cron: "30 21 * * *"
+    - cron: "30 4 * * *"
+  workflow_dispatch: {}   # 也可在 Actions 頁面手動觸發
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 呼叫後端 /api/refresh
+        run: |
+          curl -fsS -X POST "${{ vars.API_BASE }}/api/refresh?wait=true" \
+            -H "Content-Type: application/json" \
+            --max-time 300
+        # 在 repo Settings → Secrets and variables → Actions → Variables
+        # 新增 API_BASE = https://sea-conditions-api.fly.dev

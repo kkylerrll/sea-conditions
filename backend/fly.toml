@@ -1,0 +1,35 @@
+# Fly.io 後端部署設定。
+# 首次：  fly apps create sea-conditions-api      （名稱要全域唯一，可自行改）
+#         fly secrets set DATABASE_URL="..." CWA_API_KEY="..." CORS_ORIGINS="https://<你的前端>.vercel.app"
+#         fly deploy
+# 之後每次：fly deploy
+
+app = "sea-conditions-api"
+primary_region = "nrt"   # 東京，離台灣最近
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # 非機密的預設值；機密（DATABASE_URL / CWA_API_KEY / ANTHROPIC_API_KEY）用 fly secrets 設定
+  USE_LLM = "false"
+  LLM_MODEL = "claude-opus-5"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 1   # 設 0 可省錢但有冷啟動；作品集用途建議留 1
+
+  [http_service.checks]
+    [http_service.checks.health]
+      method = "GET"
+      path = "/health"
+      interval = "30s"
+      timeout = "5s"
+      grace_period = "10s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"   # FastAPI + SQLAlchemy + anthropic SDK，256mb 會不夠

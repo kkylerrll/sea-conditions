@@ -9,5 +9,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 
+# 建立非 root 使用者
+RUN useradd -m appuser
+USER appuser
+
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", \
+     "--proxy-headers", "--forwarded-allow-ips", "*"]

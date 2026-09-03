@@ -60,6 +60,11 @@ python -m app.refresh
 
 也可以打 `POST http://localhost:8000/api/refresh` 觸發同樣的更新。
 
+## 部署上線
+
+見 [`DEPLOY.md`](./DEPLOY.md)：前端 Vercel、後端 Fly.io（東京）、DB Supabase Postgres，
+GitHub Actions 每天自動更新海況。
+
 ## 用 Docker（之後正式開發環境）
 
 ```bash

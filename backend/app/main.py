@@ -52,4 +52,5 @@ def root() -> dict:
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok", "llm": settings.use_llm, "db": settings.database_url.split("://", 1)[0]}
+    dialect = settings.database_url.split("://", 1)[0].split("+", 1)[0]
+    return {"status": "ok", "llm": settings.use_llm, "db": dialect}
