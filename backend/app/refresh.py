@@ -18,6 +18,7 @@ from .services.cwa import fetch_tide_schedule
 from .services.marine import fetch_daily
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger("refresh")
 
 

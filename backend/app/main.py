@@ -12,6 +12,7 @@ from .models import Base, Location
 from .routers import conditions, locations
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger("app")
 
 app = FastAPI(title="海況去不去 API", version="0.1.0")

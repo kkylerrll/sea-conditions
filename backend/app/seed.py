@@ -16,6 +16,7 @@ from .seed_data import LOCATIONS
 from .services.build import mock_conditions, upsert_conditions
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger("seed")
 
 
