@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import ConditionStat from "@/components/ConditionStat";
 import StatusBadge from "@/components/StatusBadge";
 import { getLocation } from "@/lib/api";
+import { updatedLabel } from "@/lib/format";
 import type { Condition } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -48,6 +49,7 @@ function DayBlock({ c, i }: { c: Condition; i: number }) {
 
       <p className="mt-3 text-[11px] text-slate-400">
         資料來源：{c.source}
+        {updatedLabel(c.fetched_at) ? ` · 更新於 ${updatedLabel(c.fetched_at)}` : ""}
         {c.advice_model ? ` · 建議由 ${c.advice_model} 生成` : " · 建議為系統模板"}
       </p>
     </div>

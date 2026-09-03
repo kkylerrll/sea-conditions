@@ -1,5 +1,7 @@
+import RefreshButton from "@/components/RefreshButton";
 import SpotCard from "@/components/SpotCard";
 import { getLocations } from "@/lib/api";
+import { updatedLabel } from "@/lib/format";
 import type { Location } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -14,13 +16,26 @@ export default async function HomePage() {
     error = e instanceof Error ? e.message : "無法連線到後端";
   }
 
+  const latest = locations
+    .map((l) => l.today?.fetched_at)
+    .filter(Boolean)
+    .sort()
+    .pop();
+  const updated = updatedLabel(latest);
+
   return (
     <main>
-      <div className="mb-5">
-        <h1 className="text-2xl font-bold text-slate-900">今天，哪裡適合下水？</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          台灣熱門潛點今日海況燈號。點卡片看未來 3 天與 AI 白話建議。
-        </p>
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">今天，哪裡適合下水？</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            台灣熱門潛點今日海況燈號。點卡片看未來 3 天與 AI 白話建議。
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {updated && <span className="text-xs text-slate-400">更新於 {updated}</span>}
+          <RefreshButton />
+        </div>
       </div>
 
       {error && (

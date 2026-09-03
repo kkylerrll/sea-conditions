@@ -14,7 +14,7 @@ import logging
 from .db import SessionLocal, engine
 from .models import Base, Location
 from .services.build import upsert_conditions
-from .services.cwa import fetch_tides
+from .services.cwa import fetch_tide_schedule
 from .services.marine import fetch_daily
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -34,8 +34,9 @@ def run(days: int = 4) -> dict:
                 log.warning("%s：Open-Meteo 抓取失敗，略過 — %s", loc.name, exc)
                 continue
 
+            tide_schedule = fetch_tide_schedule(loc.cwa_tide_station)
             for row in rows:
-                tides = fetch_tides(loc.cwa_tide_station, row["date"])
+                tides = tide_schedule.get(row["date"].isoformat())
                 if tides:
                     row.update(tides)
 

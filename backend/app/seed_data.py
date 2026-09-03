@@ -19,7 +19,7 @@ LOCATIONS: list[dict] = [
         "lat": 22.342,
         "lon": 120.377,
         "cwa_marine_zone": "臺灣海峽南部",
-        "cwa_tide_station": "琉球",
+        "cwa_tide_station": "屏東縣琉球鄉",
     },
     {
         "slug": "lyudao",
@@ -32,7 +32,7 @@ LOCATIONS: list[dict] = [
         "lat": 22.657,
         "lon": 121.492,
         "cwa_marine_zone": "臺灣東南部海面",
-        "cwa_tide_station": "綠島",
+        "cwa_tide_station": "臺東縣綠島鄉",
     },
     {
         "slug": "lanyu",
@@ -45,7 +45,7 @@ LOCATIONS: list[dict] = [
         "lat": 22.043,
         "lon": 121.539,
         "cwa_marine_zone": "臺灣東南部海面",
-        "cwa_tide_station": "蘭嶼",
+        "cwa_tide_station": "臺東縣蘭嶼鄉",
     },
     {
         "slug": "kenting-houbihu",
@@ -58,7 +58,7 @@ LOCATIONS: list[dict] = [
         "lat": 21.943,
         "lon": 120.745,
         "cwa_marine_zone": "巴士海峽",
-        "cwa_tide_station": "後壁湖",
+        "cwa_tide_station": "屏東縣恆春鎮",
     },
     {
         "slug": "longdong",
@@ -71,7 +71,7 @@ LOCATIONS: list[dict] = [
         "lat": 25.109,
         "lon": 121.922,
         "cwa_marine_zone": "臺灣北部海面",
-        "cwa_tide_station": "龍洞",
+        "cwa_tide_station": "新北市貢寮區",
     },
     {
         "slug": "penghu",
@@ -84,6 +84,6 @@ LOCATIONS: list[dict] = [
         "lat": 23.565,
         "lon": 119.616,
         "cwa_marine_zone": "澎湖海面",
-        "cwa_tide_station": "馬公",
+        "cwa_tide_station": "澎湖縣馬公市",
     },
 ]

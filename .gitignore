@@ -15,3 +15,6 @@ frontend/.env.local
 .DS_Store
 *.log
 .env
+
+# CWA 潮汐原始樣本（自動產生，供除錯）
+backend/cwa_sample_tide.json
