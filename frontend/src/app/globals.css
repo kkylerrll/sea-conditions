@@ -7,5 +7,31 @@
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  @apply text-slate-900 antialiased;
+  background: linear-gradient(180deg, #f0f9ff 0%, #f8fafc 40%);
+  background-attachment: fixed;
+}
+
+/* 海面波浪：把 2x 寬的波形往左捲，做出流動感 */
+@keyframes sea-wave-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.sea-wave {
+  animation-name: sea-wave-scroll;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  transform-box: fill-box;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sea-wave {
+    animation: none !important;
+  }
 }

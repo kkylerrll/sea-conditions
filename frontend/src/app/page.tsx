@@ -1,5 +1,5 @@
+import HomeExplorer from "@/components/HomeExplorer";
 import RefreshButton from "@/components/RefreshButton";
-import SpotCard from "@/components/SpotCard";
 import { getLocations } from "@/lib/api";
 import { updatedLabel } from "@/lib/format";
 import type { Location } from "@/lib/types";
@@ -29,7 +29,7 @@ export default async function HomePage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">今天，哪裡適合下水？</h1>
           <p className="mt-1 text-sm text-slate-500">
-            台灣熱門潛點今日海況燈號。點卡片看未來 3 天與 AI 白話建議。
+            台灣潛點與衝浪點的今日海況燈號，點地圖看細節。
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -38,21 +38,17 @@ export default async function HomePage() {
         </div>
       </div>
 
-      {error && (
+      {error ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
           載入失敗：{error}
-          <div className="mt-1 text-rose-600/80">
-            請確認後端已啟動（<code className="font-mono">uvicorn app.main:app --reload</code>）。
-          </div>
+          <div className="mt-1 text-rose-600/80">請稍後再試，或按上方「重新抓海況」。</div>
         </div>
-      )}
-
-      {!error && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {locations.map((loc) => (
-            <SpotCard key={loc.slug} location={loc} />
-          ))}
+      ) : locations.length === 0 ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+          目前沒有海況資料，按上方「重新抓海況」抓一次。
         </div>
+      ) : (
+        <HomeExplorer locations={locations} />
       )}
     </main>
   );
