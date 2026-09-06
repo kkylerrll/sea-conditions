@@ -11,6 +11,9 @@ frontend/.next/
 frontend/out/
 frontend/.env.local
 
+# 座標產生器的 GeoJSON 快取（自動下載，見 frontend/scripts/README.md）
+frontend/scripts/.cache/
+
 # misc
 .DS_Store
 *.log

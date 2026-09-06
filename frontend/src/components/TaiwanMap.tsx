@@ -2,48 +2,12 @@
 
 import { MAP_H, MAP_W, project, SPOT_NUDGE } from "@/lib/geo";
 import { RATING_HEX, ratingOf } from "@/lib/sea";
+import { TAIWAN_COAST_COARSE } from "@/lib/taiwan-paths";
 import type { Location } from "@/lib/types";
 
-/* ---------- 台灣輪廓：座標點 → 平滑路徑 ---------- */
-// 點依經緯度用 lib/geo 的投影算出，順時針從富貴角開始。
-
-const COAST: [number, number][] = [
-  [240, 6], [289, 39], [271, 58], [275, 92], [249, 157], [236, 214],
-  [223, 259], [198, 299], [182, 314], [166, 397], [150, 397], [150, 365],
-  [123, 335], [104, 314], [86, 270], [86, 227], [116, 150], [129, 122],
-  [171, 58], [193, 35], [225, 17],
-];
-
-function smoothClosedPath(pts: [number, number][]): string {
-  const n = pts.length;
-  const p = (i: number) => pts[((i % n) + n) % n];
-  let d = `M ${p(0)[0]} ${p(0)[1]} `;
-  for (let i = 0; i < n; i++) {
-    const p0 = p(i - 1);
-    const p1 = p(i);
-    const p2 = p(i + 1);
-    const p3 = p(i + 2);
-    const c1x = p1[0] + (p2[0] - p0[0]) / 6;
-    const c1y = p1[1] + (p2[1] - p0[1]) / 6;
-    const c2x = p2[0] - (p3[0] - p1[0]) / 6;
-    const c2y = p2[1] - (p3[1] - p1[1]) / 6;
-    d += `C ${c1x.toFixed(1)} ${c1y.toFixed(1)}, ${c2x.toFixed(1)} ${c2y.toFixed(1)}, ${p2[0]} ${p2[1]} `;
-  }
-  return d + "Z";
-}
-
-const TAIWAN_PATH = smoothClosedPath(COAST);
-
-const ISLETS: { cx: number; cy: number; rx: number; ry: number; rot?: number }[] = [
-  { cx: 33, cy: 205, rx: 9, ry: 14 }, // 澎湖本島
-  { cx: 24, cy: 194, rx: 4, ry: 5 }, // 澎湖北
-  { cx: 40, cy: 222, rx: 3, ry: 4 }, // 澎湖南
-  { cx: 108, cy: 352, rx: 5, ry: 5 }, // 小琉球
-  { cx: 241, cy: 310, rx: 5, ry: 6 }, // 綠島
-  { cx: 246, cy: 384, rx: 6, ry: 7 }, // 蘭嶼
-];
-
-/* ---------- 元件 ---------- */
+/* 台灣輪廓來自 src/lib/taiwan-paths.ts（Natural Earth 1:10m，public domain），
+   由 scripts/gen-taiwan-paths.mjs 事先產生並 commit 進 repo，執行期不做任何運算。
+   投影與 lib/geo.ts 完全一致，marker 才會落在對的位置。 */
 
 interface Props {
   locations: Location[];
@@ -75,22 +39,17 @@ export default function TaiwanMap({ locations, selected, onSelect }: Props) {
 
       <rect x="0" y="0" width={MAP_W} height={MAP_H} fill="url(#ocean)" rx="18" />
 
-      {/* 陸地 */}
+      {/* 陸地（本島 + 澎湖 + 綠島 + 蘭嶼 + 小琉球，單一 path） */}
       <g filter="url(#landShadow)">
-        <path d={TAIWAN_PATH} fill="url(#land)" stroke="#84cc16" strokeWidth="1.4" strokeOpacity="0.6" />
-        {ISLETS.map((is, i) => (
-          <ellipse
-            key={i}
-            cx={is.cx}
-            cy={is.cy}
-            rx={is.rx}
-            ry={is.ry}
-            fill="url(#land)"
-            stroke="#84cc16"
-            strokeWidth="1.2"
-            strokeOpacity="0.6"
-          />
-        ))}
+        <path
+          d={TAIWAN_COAST_COARSE}
+          fill="url(#land)"
+          fillRule="evenodd"
+          stroke="#84cc16"
+          strokeWidth="1.4"
+          strokeOpacity="0.6"
+          strokeLinejoin="round"
+        />
       </g>
 
       {/* 潛點 marker */}

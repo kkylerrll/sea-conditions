@@ -16,11 +16,13 @@ export function project(lat: number, lon: number): { x: number; y: number } {
 }
 
 // 離島 marker 微調：真實座標投影後可能壓在輪廓線上，往外海推一點更好看。
+// 現在離島輪廓改用 taiwan-paths.ts 的真實幾何（全台檢視時放大顯示），
+// pin 落在島的中心即可，微調量比手繪橢圓時期小。
 export const SPOT_NUDGE: Record<string, { dx: number; dy: number }> = {
-  xiaoliuqiu: { dx: -6, dy: 6 },
+  xiaoliuqiu: { dx: 0, dy: 0 },
   penghu: { dx: -2, dy: 0 },
-  lyudao: { dx: 6, dy: 0 },
-  lanyu: { dx: 6, dy: 4 },
+  lyudao: { dx: 2, dy: 0 },
+  lanyu: { dx: 2, dy: 2 },
   longdong: { dx: 4, dy: -4 },
   "kenting-houbihu": { dx: 0, dy: 6 },
 };
