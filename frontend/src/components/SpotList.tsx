@@ -71,8 +71,9 @@ function SpotRow({ spot }: { spot: Spot }) {
   );
 }
 
-export default function SpotList({ spots }: { spots: Spot[] }) {
-  if (spots.length === 0) return null;
+export default function SpotList({ spots }: { spots?: Spot[] }) {
+  // 後端舊版本可能不回 spot_list（前端先於後端部署時會這樣），容錯不要整頁炸掉
+  if (!spots || spots.length === 0) return null;
 
   return (
     <section>

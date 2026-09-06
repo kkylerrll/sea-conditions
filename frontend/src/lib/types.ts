@@ -30,7 +30,7 @@ export interface Condition {
   rating: Rating;
   rating_score: number | null;
   rating_reasons: string[];
-  ratings: Ratings | null;
+  ratings?: Ratings | null;
   advice_text: string | null;
   advice_model: string | null;
 }
@@ -67,5 +67,5 @@ export interface Location {
   lon: number;
   today: Condition | null;
   forecast: Condition[];
-  spot_list: Spot[];
+  spot_list?: Spot[];
 }
