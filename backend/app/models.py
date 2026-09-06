@@ -77,6 +77,7 @@ class DailyCondition(Base):
     # 海況數據（缺就留 NULL）
     wave_height_m: Mapped[Optional[float]] = mapped_column(Float)
     wave_period_s: Mapped[Optional[float]] = mapped_column(Float)
+    wave_dir: Mapped[Optional[str]] = mapped_column(String(8))      # 主波浪來向羅盤字串，例：NE（與 wind_dir 一致）
     wind_speed_ms: Mapped[Optional[float]] = mapped_column(Float)
     wind_scale: Mapped[Optional[int]] = mapped_column(Integer)      # 蒲福風級 0–12
     wind_dir: Mapped[Optional[str]] = mapped_column(String(8))      # 例：NE

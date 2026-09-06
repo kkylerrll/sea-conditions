@@ -57,10 +57,15 @@ export function windFromDeg(dir: string | null | undefined): number | null {
   return key in DIR_DEG ? DIR_DEG[key] : null;
 }
 
-export function windDirZh(dir: string | null | undefined): string {
-  if (!dir) return "—";
+/** 羅盤字串 → 中文方位（不加「風」）。給湧浪來向等非風向使用。 */
+export function compassZh(dir: string | null | undefined): string | null {
+  if (!dir) return null;
   const key = dir.trim().toUpperCase();
-  return (DIR_ZH[key] ?? key) + "風";
+  return DIR_ZH[key] ?? key;
+}
+
+export function windDirZh(dir: string | null | undefined): string {
+  return dir ? `${compassZh(dir)}風` : "—";
 }
 
 /* ---------- 潮汐時間解析 ---------- */

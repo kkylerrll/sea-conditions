@@ -2,6 +2,7 @@
 // 全部純 SVG + CSS 動畫（globals.css），不需 client JS；動畫都吃 prefers-reduced-motion。
 
 import {
+  compassZh,
   nowMinutesTaipei,
   parseTideTimes,
   RATING_HEX,
@@ -56,6 +57,7 @@ export function SeaStateHero({ c }: { c: Condition }) {
           </p>
           <p className="mt-1 text-xs text-slate-500">
             湧浪週期 {c.wave_period_s == null ? "—" : `約 ${Math.round(c.wave_period_s)} 秒一波`}
+            {c.wave_dir ? ` · 來向 ${compassZh(c.wave_dir)}（${c.wave_dir}）` : ""}
           </p>
         </div>
         <span

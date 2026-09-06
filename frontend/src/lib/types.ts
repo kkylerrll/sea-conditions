@@ -6,6 +6,7 @@ export interface Condition {
   fetched_at: string | null;
   wave_height_m: number | null;
   wave_period_s: number | null;
+  wave_dir: string | null;
   wind_speed_ms: number | null;
   wind_scale: number | null;
   wind_dir: string | null;

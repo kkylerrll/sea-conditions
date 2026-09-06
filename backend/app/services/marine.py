@@ -111,6 +111,7 @@ def fetch_daily(lat: float, lon: float, days: int = 4, timeout: float = 15.0) ->
                 "wave_period_s": round(col(md, "wave_period_max", i), 1)
                 if col(md, "wave_period_max", i) is not None
                 else None,
+                "wave_dir": _deg_to_compass(col(md, "wave_direction_dominant", i)),
                 "wind_speed_ms": round(wind_ms, 1) if wind_ms is not None else None,
                 "gust_ms": round(gust, 1) if gust is not None else None,
                 "wind_dir": _deg_to_compass(col(fd, "wind_direction_10m_dominant", i)),

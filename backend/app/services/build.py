@@ -41,6 +41,7 @@ def mock_conditions(location: Location, days: int = 4) -> list[dict]:
                 "source": "mock",
                 "wave_height_m": wave,
                 "wave_period_s": round(4 + r2 * 6, 1),
+                "wave_dir": ["NE", "ENE", "E", "ESE", "SE", "S"][seed % 6],
                 "wind_speed_ms": wind_ms,
                 "wind_scale": beaufort(wind_ms),
                 "wind_dir": ["NE", "N", "ENE", "E", "SE", "S"][seed % 6],
@@ -93,7 +94,7 @@ def upsert_conditions(db: Session, location: Location, rows: list[dict]) -> int:
             existing = DailyCondition(location_id=location.id, date=row["date"], source=row["source"])
             db.add(existing)
         for field in (
-            "wave_height_m", "wave_period_s", "wind_speed_ms", "wind_scale", "wind_dir",
+            "wave_height_m", "wave_period_s", "wave_dir", "wind_speed_ms", "wind_scale", "wind_dir",
             "gust_ms", "water_temp_c", "visibility_m", "tide_high", "tide_low",
             "rating", "rating_score", "rating_reasons", "advice_text", "advice_model", "raw",
         ):

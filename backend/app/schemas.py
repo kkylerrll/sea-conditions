@@ -17,6 +17,7 @@ class ConditionOut(BaseModel):
 
     wave_height_m: Optional[float] = None
     wave_period_s: Optional[float] = None
+    wave_dir: Optional[str] = None
     wind_speed_ms: Optional[float] = None
     wind_scale: Optional[int] = None
     wind_dir: Optional[str] = None

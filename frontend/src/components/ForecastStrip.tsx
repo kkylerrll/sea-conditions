@@ -1,6 +1,6 @@
 // 未來幾天：一排燈號 chip，用原生 <details> 點開才看細節數字（漸進揭露、不需 client JS）。
 
-import { RATING_HEX, ratingOf } from "@/lib/sea";
+import { compassZh, RATING_HEX, ratingOf } from "@/lib/sea";
 import { isoPlusDays, todayInTaipei, updatedLabel } from "@/lib/format";
 import type { Condition } from "@/lib/types";
 
@@ -63,6 +63,7 @@ export default function ForecastStrip({ days }: { days: Condition[] }) {
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   <Cell k="浪高" v={c.wave_height_m != null ? `${c.wave_height_m} m` : "—"} />
                   <Cell k="湧浪週期" v={c.wave_period_s != null ? `${c.wave_period_s} s` : "—"} />
+                  <Cell k="湧浪來向" v={c.wave_dir ? `${compassZh(c.wave_dir)}（${c.wave_dir}）` : "—"} />
                   <Cell k="風力" v={c.wind_scale != null ? `${c.wind_scale} 級` : "—"} />
                   <Cell k="風向 / 陣風" v={c.wind_dir ? `${c.wind_dir} / ${c.gust_ms ?? "—"}` : "—"} />
                   <Cell k="水溫" v={c.water_temp_c != null ? `${c.water_temp_c} °C` : "—"} />
