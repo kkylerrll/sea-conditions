@@ -121,9 +121,42 @@ curl -X POST 'https://sea-conditions-api.onrender.com/api/refresh?wait=true'
 
 ---
 
+## 資料庫遷移（Alembic）
+
+schema 由 Alembic 管理，不再用 `Base.metadata.create_all`。
+
+- 版本檔在 `backend/alembic/versions/`；基準版是 `81e1c67e1b76`（baseline schema），
+  內容等同舊的 `create_all` 建出來的 `locations` / `daily_conditions` 兩張表。
+- **Render 部署**：`backend/Dockerfile` 的 CMD 會在起 uvicorn 前先跑 `alembic upgrade head`，
+  每次 deploy 自動套用未執行的遷移。
+- **本機**：直接 `uvicorn app.main:app` / `python -m app.seed` / `python -m app.refresh`
+  都會在啟動時自動 `upgrade head`（`app/migrate.py`），SQLite 一樣適用。
+  手動操作：`cd backend && alembic upgrade head`、`alembic revision --autogenerate -m "..."`。
+
+### ⚠️ 既有資料庫第一次導入：必須先 stamp（只做一次）
+
+正式環境的 Supabase、以及任何你本機已經存在的 `sea_conditions.db`，
+這兩張表**已經是 `create_all` 建好的**。若直接 `alembic upgrade head`，
+baseline 會嘗試 `CREATE TABLE` 而炸掉。所以在**第一支新遷移上線之前**，
+要對既有資料庫執行一次：
+
+```bash
+# 對正式 Supabase（帶正式 DATABASE_URL）跑一次即可：
+cd backend
+DATABASE_URL='postgresql+psycopg://...:...@...pooler.supabase.com:5432/postgres?sslmode=require' \
+  alembic stamp 81e1c67e1b76
+```
+
+`stamp` 只把版本號寫進 `alembic_version` 表、不動任何資料表結構。做完之後
+Render 的 `alembic upgrade head` 只會跑 baseline 之後的遷移（例如新增 `wave_dir` 欄位）。
+
+**全新的空資料庫不需要 stamp** —— `alembic upgrade head` 會照 baseline 把表建好，
+一路升到最新（本機 `python -m app.seed` 對全新 SQLite 已驗證可端到端跑通）。
+
+---
+
 ## 之後要補的（非上線必須）
 
-- **Alembic migration**：目前靠 `Base.metadata.create_all` 建表，改 schema 不會自動遷移。
 - **`/api/refresh` 加保護**：現在是公開端點（只是重抓資料、上游 API 免費，風險低）。可加 `REFRESH_TOKEN`。
 - **前端「重新抓海況」按鈕**：若之後 refresh 加了 token，要改走 Next.js route handler 代打。
 - **Supabase 暫停**：每日 cron 會持續連線，通常不會被暫停。

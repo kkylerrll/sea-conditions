@@ -10,8 +10,9 @@ import logging
 
 from sqlalchemy import select
 
-from .db import SessionLocal, engine
-from .models import Base, Location
+from .db import SessionLocal
+from .migrate import run_migrations
+from .models import Location
 from .seed_data import LOCATIONS
 from .services.build import mock_conditions, upsert_conditions
 
@@ -21,7 +22,7 @@ log = logging.getLogger("seed")
 
 
 def run() -> None:
-    Base.metadata.create_all(engine)
+    run_migrations()
     db = SessionLocal()
     try:
         for spec in LOCATIONS:

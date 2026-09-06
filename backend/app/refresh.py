@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import logging
 
-from .db import SessionLocal, engine
-from .models import Base, Location
+from .db import SessionLocal
+from .migrate import run_migrations
+from .models import Location
 from .services.build import upsert_conditions
 from .services.cwa import fetch_tide_schedule
 from .services.marine import fetch_daily
@@ -23,7 +24,7 @@ log = logging.getLogger("refresh")
 
 
 def run(days: int = 4) -> dict:
-    Base.metadata.create_all(engine)
+    run_migrations()
     db = SessionLocal()
     updated = 0
     try:

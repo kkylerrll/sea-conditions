@@ -7,8 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
 
 from .config import settings
-from .db import SessionLocal, engine
-from .models import Base, Location
+from .db import SessionLocal
+from .migrate import run_migrations
+from .models import Location
 from .routers import conditions, locations
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -31,8 +32,9 @@ app.include_router(conditions.router)
 
 @app.on_event("startup")
 def _startup() -> None:
-    # 建表；若完全沒有地點資料，自動 seed 一次，避免第一次打開是空的
-    Base.metadata.create_all(engine)
+    # 跑遷移把 schema 帶到最新（正式環境 Docker CMD 已先跑過一次，這裡是本機直跑 uvicorn 的保險）；
+    # 若完全沒有地點資料，自動 seed 一次，避免第一次打開是空的
+    run_migrations()
     db = SessionLocal()
     try:
         count = db.scalar(select(func.count()).select_from(Location)) or 0
