@@ -1,0 +1,25 @@
+# Render Blueprint —— 後端 FastAPI（免費方案，不需信用卡）
+# 用法：render.com → New + → Blueprint → 連 sea-conditions repo → Apply
+# DATABASE_URL / CWA_API_KEY / CORS_ORIGINS 會在建立時要你填（不寫進 git）
+
+services:
+  - type: web
+    name: sea-conditions-api
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: USE_LLM
+        value: "false"
+      - key: LLM_MODEL
+        value: claude-opus-5
+      - key: DATABASE_URL
+        sync: false
+      - key: CWA_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false

@@ -2,8 +2,8 @@
 
 ```
         ┌─────────────┐         ┌──────────────────┐         ┌────────────────┐
-瀏覽器 → │  Vercel     │  fetch  │   Fly.io (東京)   │  SQL    │  Supabase      │
-手機   → │  前端 Next  │ ──────► │   後端 FastAPI    │ ──────► │  Postgres      │
+瀏覽器 → │  Vercel     │  fetch  │  Render (新加坡)  │  SQL    │  Supabase      │
+手機   → │  前端 Next  │ ──────► │  後端 FastAPI     │ ──────► │  Postgres      │
         └─────────────┘         └──────────────────┘         └────────────────┘
                                         ▲
                                         │ 每天 POST /api/refresh
@@ -12,166 +12,116 @@
                                 └───────────────────┘
 ```
 
-分三個平台的原因：前端是靜態 + SSR，Vercel 對 Next.js 最省事且免費；後端是長駐 Python
-服務，放 Fly（你已有帳號）；DB 用 Supabase 是因為第二層社群功能會用到它的 Auth 與 Storage，
-現在先只用它的 Postgres。
+三個平台都有免費方案、都不需信用卡（原本規劃的 Fly 需綁卡，改用 Render）。
 
----
-
-## 需要你動手的 3 件事（都要瀏覽器登入，我無法代勞）
-
-| 步驟 | 你做 | 完成後給我 |
+| 平台 | 角色 | 免費方案限制 |
 |---|---|---|
-| 1. GitHub repo | 建一個 **public** repo | repo 的 SSH 或 HTTPS URL |
-| 2. Supabase | 建 project、複製連線字串 | 格式化後的 `DATABASE_URL`（機密，用安全管道給我，或自己設 `fly secrets`）|
-| 4. Vercel | 匯入 repo、設一個環境變數 | 部署後的網址（例：`https://xxx.vercel.app`）|
-
-步驟 3（Fly 後端部署）我可以直接做——你的 `fly` CLI 已登入。
+| Vercel | 前端 Next.js | Hobby 無限制夠用 |
+| Render | 後端 FastAPI | 閒置 15 分鐘休眠，下一個請求冷啟動 ~50 秒 |
+| Supabase | Postgres | 500MB、7 天完全無連線會暫停 |
 
 ---
 
-## 步驟 1：GitHub repo（你）
+## 進度
 
-在 https://github.com/new 建立：
+- [x] 步驟 1：GitHub repo — https://github.com/kkylerrll/sea-conditions
+- [x] 步驟 2：Supabase 專案（連線字串已取得）
+- [ ] 步驟 3：後端 → Render
+- [ ] 步驟 4：前端 → Vercel
+- [ ] 步驟 5：接 CORS + 每日排程
 
-- Repository name：`sea-conditions`（或你喜歡的）
-- 選 **Public**
-- **不要**勾 "Add a README / .gitignore / license"（本機已經有了）
-
-建完後把 URL 給我，我執行：
-
-```bash
-git remote add origin <你的-repo-url>
-git branch -M main
-git push -u origin main
+`DATABASE_URL`（後端格式）：
 ```
-
-（或你自己跑這三行也行。）
-
----
-
-## 步驟 2：Supabase Postgres（你）
-
-1. https://supabase.com → 用 GitHub 登入 → **New project**
-   - Name：`sea-conditions`
-   - Database Password：**自己設一個強密碼並記下來**（等下會用到）
-   - Region：**Southeast Asia (Singapore)**（離台灣最近的選項）
-   - Plan：Free
-2. 專案建好後（約 2 分鐘），左下 **Project Settings → Database**
-3. 找到 **Connection string → 選 `Session pooler`**（不是 Transaction pooler）
-   - 會長這樣：
-     `postgresql://postgres.abcdefgh:[YOUR-PASSWORD]@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres`
-4. 改成後端能用的格式：把開頭的 `postgresql://` 換成 `postgresql+psycopg://`，
-   `[YOUR-PASSWORD]` 換成你剛設的密碼，結尾加上 `?sslmode=require`：
-   ```
-   postgresql+psycopg://postgres.abcdefgh:你的密碼@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require
-   ```
-   這就是 `DATABASE_URL`。
-
-> 為什麼用 Session pooler 而不是 Transaction pooler / 直連：
-> - 直連（`db.xxx.supabase.co:5432`）只給 IPv6，Fly 走 IPv4 會連不到。
-> - Transaction pooler（6543 埠）不支援 SQLAlchemy 會用到的 prepared statements。
-> - Session pooler（pooler 主機的 5432 埠）走 IPv4、行為跟直連一樣，最穩。
-
-**這串是機密**，不要貼進聊天或 commit。給我的話請用安全管道，或你自己在步驟 3 執行
-`fly secrets set`（我把指令列在下面）。
+postgresql+psycopg://postgres.<project_ref>:<你的密碼>@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require
+```
+（`<...>` 換成實際值。**別 commit 這串。**）
 
 ---
 
-## 步驟 3：後端 → Fly.io
+## 步驟 3：後端 → Render（你操作，約 5 分鐘）
 
-設定檔 `backend/fly.toml` 已寫好（app 名稱 `sea-conditions-api`、東京、512MB、含 /health 健康檢查）。
+`render.yaml`（repo 根目錄）已寫好，Render 會照它自動建立服務。
+
+1. https://render.com → **Get Started** → 用 **GitHub** 登入 → 授權 Render 讀取 `sea-conditions` repo
+2. Dashboard → **New +** → **Blueprint**
+3. 選 `sea-conditions` repo → Render 讀到 `render.yaml` → 顯示要建立 `sea-conditions-api`（web, docker, free, singapore）
+4. 它會列出 3 個要你填的環境變數：
+   - `DATABASE_URL` = 上面那串 Supabase 連線字串（`postgresql+psycopg://...?sslmode=require`）
+   - `CWA_API_KEY` = 你的中央氣象署金鑰（`CWA-...`）
+   - `CORS_ORIGINS` = 先填 `https://placeholder`（步驟 5 再改成 Vercel 網址）
+5. **Apply** → Render 開始 build（Docker，第一次約 3–5 分鐘）
+6. 完成後服務網址是 `https://sea-conditions-api.onrender.com`（若名稱被佔用會是 `-xxxx` 後綴，以 Render 顯示為準）
+
+### 驗證後端
 
 ```bash
-cd backend
-
-# 3-1 建立 app（名稱要全域唯一，被佔用就換一個，並同步改 fly.toml 的 app = "...")
-fly apps create sea-conditions-api
-
-# 3-2 設定機密（DATABASE_URL 來自步驟 2；CORS_ORIGINS 先放佔位，步驟 5 再更新）
-fly secrets set \
-  DATABASE_URL='postgresql+psycopg://...?sslmode=require' \
-  CWA_API_KEY='CWA-你的金鑰' \
-  CORS_ORIGINS='https://placeholder.vercel.app'
-
-# 3-3 部署
-fly deploy
-
-# 3-4 確認
-curl https://sea-conditions-api.fly.dev/health
+curl https://sea-conditions-api.onrender.com/health
 # → {"status":"ok","llm":false,"db":"postgresql"}
+
+# 第一次啟動會自動建表 + seed 6 個潛點。再抓一次真實海況：
+curl -X POST 'https://sea-conditions-api.onrender.com/api/refresh?wait=true'
+# （冷啟動時第一發可能要等 ~60 秒，正常）
 ```
 
-後端第一次啟動會自動建表 + seed 6 個潛點與示範海況（`app/main.py` 的 startup 事件）。
-接著跑一次真實資料：
-
-```bash
-curl -X POST 'https://sea-conditions-api.fly.dev/api/refresh?wait=true'
-```
-
-> 之後要開 AI 建議：`fly secrets set ANTHROPIC_API_KEY='sk-ant-...' USE_LLM=true LLM_MODEL=claude-sonnet-5`
+> 之後要開 AI 建議：Render 服務 → Environment → 加 `ANTHROPIC_API_KEY`、把 `USE_LLM` 改 `true`、
+> `LLM_MODEL` 設 `claude-sonnet-5`，存檔會自動重部署。
 
 ---
 
-## 步驟 4：前端 → Vercel（你）
+## 步驟 4：前端 → Vercel（你操作，約 3 分鐘）
 
-1. https://vercel.com → 用 GitHub 登入 → **Add New → Project** → 選 `sea-conditions` repo
-2. **Root Directory** 設為 `frontend`（重要，repo 是 monorepo）
-3. Framework 會自動偵測為 Next.js，Build/Output 用預設
+1. https://vercel.com → 用 **GitHub** 登入 → **Add New → Project** → 選 `sea-conditions`
+2. **Root Directory** 設為 `frontend`（重要，這是 monorepo）
+3. Framework 自動偵測 Next.js，Build/Output 用預設
 4. **Environment Variables** 加一個：
-   - `NEXT_PUBLIC_API_BASE` = `https://sea-conditions-api.fly.dev`（步驟 3 的後端網址）
-5. **Deploy**
-
-完成後拿到前端網址，例如 `https://sea-conditions.vercel.app`。
+   - `NEXT_PUBLIC_API_BASE` = `https://sea-conditions-api.onrender.com`（步驟 3 的後端網址）
+5. **Deploy** → 完成後拿到前端網址，例如 `https://sea-conditions.vercel.app`
 
 ---
 
 ## 步驟 5：把三邊接起來
 
-```bash
-# 5-1 後端 CORS 放行前端網址
-cd backend
-fly secrets set CORS_ORIGINS='https://sea-conditions.vercel.app'
-# （fly secrets set 會自動重啟）
+1. **後端 CORS 放行前端網址**：
+   Render → `sea-conditions-api` → **Environment** → 把 `CORS_ORIGINS` 改成你的 Vercel 網址
+   （例：`https://sea-conditions.vercel.app`）→ 存檔（會自動重部署）
 
-# 5-2 每日自動更新：到 GitHub repo →
-#     Settings → Secrets and variables → Actions → Variables 分頁 → New repository variable
-#     Name: API_BASE   Value: https://sea-conditions-api.fly.dev
-#     （workflow 檔 .github/workflows/daily-refresh.yml 已經在 repo 裡，會每天台灣時間 05:30 / 12:30 跑）
-```
+2. **每日自動更新**：
+   GitHub repo → **Settings → Secrets and variables → Actions → Variables 分頁 → New repository variable**
+   - Name：`API_BASE`
+   - Value：`https://sea-conditions-api.onrender.com`
+
+   （workflow `.github/workflows/daily-refresh.yml` 已在 repo 裡，每天台灣時間 05:30 / 12:30 跑，
+   順便讓 Render 服務保持喚醒。）
 
 ---
 
 ## 步驟 6：驗收
 
-- 開 `https://<你的>.vercel.app` → 6 張潛點卡片有真實浪高/風力/水溫
+- 開 `https://<你的>.vercel.app` → 6 張潛點卡片有真實浪高/風力/水溫（首開若卡一下是 Render 冷啟動）
 - 點任一潛點 → 未來 4 天、潮汐時間有值
-- 手機開同一個網址 → 單欄排版；Safari「加入主畫面」會變 app icon
-- GitHub → Actions → 手動觸發一次 `每日更新海況`，看有沒有綠勾
+- 手機開同一個網址 → 單欄排版；Safari「加入主畫面」變 app icon
+- GitHub → Actions → 手動觸發一次「每日更新海況」→ 綠勾
 
 ---
 
-## 每月成本概估
+## 每月成本
 
 | 項目 | 費用 |
 |---|---|
-| Vercel（Hobby）| $0 |
-| Supabase（Free：500MB DB、暫停於 7 天無活動）| $0 |
-| Fly.io 後端（1×shared-cpu-1x 512MB 常駐）| 約 $2–4 |
+| Vercel Hobby | $0 |
+| Render Free（後端）| $0 |
+| Supabase Free | $0 |
 | GitHub Actions（public repo）| $0 |
 | Open-Meteo / CWA API | $0 |
-| **合計** | **約 $2–4／月**（不開 AI 建議的話）|
+| **合計** | **$0**（不開 AI 建議的話）|
 
-想再省：`fly.toml` 把 `min_machines_running` 改 `0`，沒人用時機器休眠，月費趨近 $0，
-代價是第一個訪客要等 2–3 秒冷啟動。
+代價：Render 免費方案閒置會休眠，冷啟動 ~50 秒。要無休眠就升 Render Starter（$7/月）或改回 Fly（綁卡，~$2–4/月，`backend/fly.toml` 已備妥）。
 
 ---
 
 ## 之後要補的（非上線必須）
 
 - **Alembic migration**：目前靠 `Base.metadata.create_all` 建表，改 schema 不會自動遷移。
-  加欄位時要嘛手動改 DB，要嘛導入 Alembic。
-- **`/api/refresh` 加保護**：現在是公開端點（雖然只是重抓資料、上游 API 都免費）。
-  可加一個 `REFRESH_TOKEN` 環境變數 + query 檢查，GitHub Actions 用 secret 帶入。
-- **前端「重新抓海況」按鈕**：若之後 refresh 加了 token，這顆按鈕要改走 Next.js route handler 代打。
-- **Supabase 暫停**：Free 方案 7 天無連線會暫停 DB。每日 refresh 的 cron 會持續連線，所以通常不會被暫停。
+- **`/api/refresh` 加保護**：現在是公開端點（只是重抓資料、上游 API 免費，風險低）。可加 `REFRESH_TOKEN`。
+- **前端「重新抓海況」按鈕**：若之後 refresh 加了 token，要改走 Next.js route handler 代打。
+- **Supabase 暫停**：每日 cron 會持續連線，通常不會被暫停。
