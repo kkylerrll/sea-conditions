@@ -35,6 +35,26 @@ class ConditionOut(BaseModel):
     advice_model: Optional[str] = None
 
 
+class SpotOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    slug: str
+    name: str
+    name_en: Optional[str] = None
+    lat: float
+    lon: float
+    coord_approx: bool = False
+    activities: List[str] = []
+    bottom: Optional[str] = None
+    facing_deg: Optional[int] = None
+    shelter: Optional[str] = None
+    level: Optional[str] = None
+    entry: Optional[str] = None
+    depth_min_m: Optional[float] = None
+    depth_max_m: Optional[float] = None
+    blurb: str = ""
+
+
 class LocationOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -52,6 +72,7 @@ class LocationOut(BaseModel):
 class LocationWithConditions(LocationOut):
     today: Optional[ConditionOut] = None
     forecast: List[ConditionOut] = []
+    spot_list: List[SpotOut] = []
 
 
 class RefreshResult(BaseModel):

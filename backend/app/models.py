@@ -52,10 +52,46 @@ class Location(Base):
         order_by="DailyCondition.date",
     )
 
-    # --- 第二層預留（本次不建表，先記在這裡當設計備忘） ---
-    # user_spots        使用者新增的地點（待審 flag 之後才加）
+    spots_rel: Mapped[list["Spot"]] = relationship(
+        back_populates="location",
+        cascade="all, delete-orphan",
+        order_by="Spot.sort, Spot.id",
+    )
+
+    # --- 之後預留 ---
     # comments          心得留言（純文字 + 照片，依讚數排序）
     # condition_reports 使用者實測海況回報，用來校正 AI 建議
+
+
+class Spot(Base):
+    """地區底下的實際下水點（子潛點 / 浪點）。海況數據掛在 Location 層級，
+    這裡只放靜態屬性；每個點的燈號在讀取時依 bottom / facing_deg / shelter 即時算。"""
+
+    __tablename__ = "spots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    location_id: Mapped[int] = mapped_column(
+        ForeignKey("locations.id", ondelete="CASCADE"), index=True
+    )
+    slug: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    name_en: Mapped[Optional[str]] = mapped_column(String(120))
+    lat: Mapped[float] = mapped_column(Float)
+    lon: Mapped[float] = mapped_column(Float)
+    coord_approx: Mapped[bool] = mapped_column(default=False)  # 座標為推估（沈船、水下地形點…）
+
+    activities: Mapped[list] = mapped_column(JSON, default=list)   # scuba / freedive / snorkel / surf
+    bottom: Mapped[Optional[str]] = mapped_column(String(16))      # sand|reef|point|rivermouth|harbour|wreck|artificial|mixed
+    facing_deg: Mapped[Optional[int]] = mapped_column(Integer)     # 海岸開口朝向 0–359，null=待補
+    shelter: Mapped[Optional[str]] = mapped_column(String(12))     # open|semi|sheltered
+    level: Mapped[Optional[str]] = mapped_column(String(12))       # beginner|intermediate|advanced
+    entry: Mapped[Optional[str]] = mapped_column(String(8))        # shore|boat
+    depth_min_m: Mapped[Optional[float]] = mapped_column(Float)
+    depth_max_m: Mapped[Optional[float]] = mapped_column(Float)
+    blurb: Mapped[str] = mapped_column(Text, default="")
+    sort: Mapped[int] = mapped_column(Integer, default=0)
+
+    location: Mapped["Location"] = relationship(back_populates="spots_rel")
 
 
 class DailyCondition(Base):

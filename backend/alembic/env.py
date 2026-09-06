@@ -19,8 +19,10 @@ config = context.config
 # 從設定注入連線字串（不放在 alembic.ini，避免把密碼寫進 git）
 config.set_main_option("sqlalchemy.url", settings.database_url)
 
-if config.config_file_name is not None:
-    # disable_existing_loggers=False：從 app 內部以程式呼叫 upgrade 時，不要把 app 的 logger 關掉
+if config.config_file_name is not None and config.attributes.get("configure_logger", True):
+    # 只有 CLI（alembic upgrade head）才照 alembic.ini 設 logging；
+    # 從 app 內部（seed / refresh / uvicorn startup）呼叫時 configure_logger=False，
+    # 不要讓 alembic.ini 的 root=WARNING 蓋掉 app 自己的 basicConfig(INFO)。
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata

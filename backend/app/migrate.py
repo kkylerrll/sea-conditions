@@ -23,6 +23,8 @@ def alembic_config() -> Config:
     cfg = Config(str(_BACKEND_DIR / "alembic.ini"))
     # 從 app 內部呼叫時 cwd 不一定是 backend/，用絕對路徑指定
     cfg.set_main_option("script_location", str(_BACKEND_DIR / "alembic"))
+    # 以程式呼叫時不要讓 alembic.ini 重設 logging（會蓋掉 app 的 INFO log）
+    cfg.attributes["configure_logger"] = False
     return cfg
 
 
