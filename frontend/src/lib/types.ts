@@ -1,5 +1,17 @@
 export type Rating = "green" | "yellow" | "red" | "unknown";
 
+export interface ActivityRating {
+  rating: Rating;
+  score: number | null;
+  reasons: string[];
+}
+
+// 依活動別的燈號。潛水浪越大越扣分；衝浪要有浪、吃離岸風，兩者常相反。
+export interface Ratings {
+  dive: ActivityRating | null;
+  surf: ActivityRating | null;
+}
+
 export interface Condition {
   date: string;
   source: string;
@@ -18,6 +30,7 @@ export interface Condition {
   rating: Rating;
   rating_score: number | null;
   rating_reasons: string[];
+  ratings: Ratings | null;
   advice_text: string | null;
   advice_model: string | null;
 }

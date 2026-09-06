@@ -12,12 +12,21 @@ from ..config import settings
 
 log = logging.getLogger("advice")
 
-SYSTEM = (
-    "你是台灣潛水與自由潛水的資深教練，也是海況播報員。"
-    "根據當天數據，用口語、像朋友提醒的語氣寫 2 至 3 句繁體中文建議，"
-    "直接講今天適不適合去這個點、建議幾點去、下水要注意什麼。"
-    "不要條列、不要照抄數字、不要用「根據資料顯示」這種制式開頭。資料不足就直接說不確定。"
-)
+_SYSTEM = {
+    "dive": (
+        "你是台灣潛水與自由潛水的資深教練，也是海況播報員。"
+        "根據當天數據，用口語、像朋友提醒的語氣寫 2 至 3 句繁體中文建議，"
+        "直接講今天適不適合去這個點下水、建議幾點去、下水要注意什麼。"
+        "不要條列、不要照抄數字、不要用「根據資料顯示」這種制式開頭。資料不足就直接說不確定。"
+    ),
+    "surf": (
+        "你是台灣衝浪的資深教練，也是浪況播報員。"
+        "根據當天數據，用口語、像朋友提醒的語氣寫 2 至 3 句繁體中文建議，"
+        "直接講今天這個點有沒有浪、適不適合下水衝、建議幾點去、要注意什麼（風向、浪太大、流）。"
+        "記住衝浪要有浪才好，浪太小才是壞消息；離岸風浪面才乾淨。"
+        "不要條列、不要照抄數字、不要用「根據資料顯示」這種制式開頭。資料不足就直接說不確定。"
+    ),
+}
 
 _RATING_LABEL = {"green": "適合", "yellow": "勉強", "red": "不建議", "unknown": "資料不足"}
 
@@ -26,7 +35,7 @@ def _fmt(v, unit: str = "") -> str:
     return f"{v}{unit}" if v is not None else "無資料"
 
 
-def _template(location_name: str, c: dict) -> str:
+def _template(location_name: str, c: dict, activity: str = "dive") -> str:
     rating = c.get("rating", "unknown")
     wh = c.get("wave_height_m")
     ws = c.get("wind_scale")
@@ -38,6 +47,27 @@ def _template(location_name: str, c: dict) -> str:
         detail_bits.append(f"風力 {ws} 級")
     detail = "、".join(detail_bits)
     detail_clause = f"（{detail}）" if detail else ""
+
+    if activity == "surf":
+        if rating == "green":
+            return (
+                f"{location_name}這天有浪、條件不錯{detail_clause}，"
+                "建議挑風還沒起來的清晨或傍晚下水，注意離岸流。"
+            )
+        if rating == "yellow":
+            return (
+                f"{location_name}這天勉強能衝{detail_clause}，"
+                "浪型可能偏小或偏亂，長板會比較好玩，避開風最強的時段。"
+            )
+        if rating == "red":
+            return (
+                f"{location_name}這天不太適合{detail_clause}，"
+                "浪太小沒得衝、或浪太大加上亂風偏危險，改點或改天比較實在。"
+            )
+        return (
+            f"{location_name}這天的浪況資料還不齊，"
+            "出發前再查一次浪點預報與現場狀況。"
+        )
 
     if rating == "green":
         return (
@@ -60,10 +90,12 @@ def _template(location_name: str, c: dict) -> str:
     )
 
 
-def generate_advice(location_name: str, c: dict) -> tuple[str, str | None]:
-    """回傳 (advice_text, model_id or None)。"""
+def generate_advice(
+    location_name: str, c: dict, activity: str = "dive"
+) -> tuple[str, str | None]:
+    """回傳 (advice_text, model_id or None)。activity ∈ dive | surf。"""
 
-    template = _template(location_name, c)
+    template = _template(location_name, c, activity)
     if not settings.use_llm:
         return template, None
 
@@ -97,7 +129,7 @@ def generate_advice(location_name: str, c: dict) -> tuple[str, str | None]:
         resp = client.messages.create(
             model=settings.llm_model,
             max_tokens=400,
-            system=SYSTEM,
+            system=_SYSTEM.get(activity, _SYSTEM["dive"]),
             messages=[{"role": "user", "content": user}],
         )
         text = "".join(b.text for b in resp.content if b.type == "text").strip()

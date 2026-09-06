@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MAP_H, MAP_W, project, SPOT_NUDGE } from "@/lib/geo";
-import { RATING_HEX, ratingOf } from "@/lib/sea";
+import { primaryActivity, RATING_HEX, ratingFor } from "@/lib/sea";
 import {
   FULL_VIEW,
   ISLAND_BOXES,
@@ -312,7 +312,7 @@ export default function TaiwanMap({ locations, selected, onSelect }: Props) {
             所以 pin 與文字在任何縮放倍率下都保持固定螢幕大小 */}
         {locations.map((loc) => {
           const { x, y } = markerPos(loc);
-          const c = RATING_HEX[ratingOf(loc.today?.rating ?? "unknown")];
+          const c = RATING_HEX[ratingFor(loc.today, primaryActivity(loc.activities))];
           const isSel = selected === loc.slug;
           const labelLeft = x > MAP_W - 74;
           const labelBelow = y < 40;

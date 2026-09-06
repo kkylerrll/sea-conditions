@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import ForecastStrip from "@/components/ForecastStrip";
 import {
+  ActivityRatings,
   SeaStateHero,
   TempGauge,
   TideCurve,
@@ -10,7 +11,14 @@ import {
 import SpotList from "@/components/SpotList";
 import { getLocation } from "@/lib/api";
 import { updatedLabel } from "@/lib/format";
-import { RATING_HEX, ratingOf } from "@/lib/sea";
+import { directionsUrl } from "@/lib/nav";
+import {
+  ACTIVITY_KIND_ZH,
+  primaryActivity,
+  RATING_HEX,
+  ratingFor,
+  reasonsFor,
+} from "@/lib/sea";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +33,9 @@ export default async function SpotPage({ params }: { params: { slug: string } })
 
   const today = location.forecast[0] ?? location.today ?? null;
   const rest = location.forecast.slice(1);
-  const col = today ? RATING_HEX[ratingOf(today.rating)] : null;
+  const primary = primaryActivity(location.activities);
+  const reasons = today ? reasonsFor(today, primary) : [];
+  const col = today ? RATING_HEX[ratingFor(today, primary)] : null;
 
   return (
     <main className="space-y-5">
@@ -44,6 +54,17 @@ export default async function SpotPage({ params }: { params: { slug: string } })
           {location.name_en ? ` · ${location.name_en}` : ""}
         </p>
         <p className="mt-2 text-sm leading-relaxed text-slate-600">{location.blurb}</p>
+        <a
+          href={directionsUrl(location.lat, location.lon)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-700 transition hover:bg-sky-100"
+        >
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path d="M10 2C6.7 2 4 4.7 4 8c0 4.2 5.3 9.4 5.6 9.7a.6.6 0 0 0 .8 0C10.7 17.4 16 12.2 16 8c0-3.3-2.7-6-6-6Zm0 8.2A2.2 2.2 0 1 1 10 5.8a2.2 2.2 0 0 1 0 4.4Z" />
+          </svg>
+          用 Google 地圖導航
+        </a>
       </header>
 
       {!today ? (
@@ -52,7 +73,13 @@ export default async function SpotPage({ params }: { params: { slug: string } })
         </div>
       ) : (
         <>
-          <SeaStateHero c={today} />
+          <SeaStateHero
+            c={today}
+            rating={ratingFor(today, primary)}
+            activityLabel={ACTIVITY_KIND_ZH[primary]}
+          />
+
+          <ActivityRatings c={today} activities={location.activities} />
 
           {today.advice_text && (
             <div
@@ -72,9 +99,9 @@ export default async function SpotPage({ params }: { params: { slug: string } })
 
           <TideCurve c={today} />
 
-          {today.rating_reasons.length > 0 && (
+          {reasons.length > 0 && (
             <ul className="space-y-1 rounded-2xl border border-slate-200 bg-white p-4 text-xs text-slate-500 shadow-sm">
-              {today.rating_reasons.map((r, i) => (
+              {reasons.map((r, i) => (
                 <li key={i}>· {r}</li>
               ))}
             </ul>
@@ -86,7 +113,7 @@ export default async function SpotPage({ params }: { params: { slug: string } })
             {today.advice_model ? ` · 建議由 ${today.advice_model} 生成` : " · 建議為系統模板"}
           </p>
 
-          <ForecastStrip days={rest} />
+          <ForecastStrip days={rest} activity={primary} />
         </>
       )}
     </main>

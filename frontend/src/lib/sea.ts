@@ -1,6 +1,6 @@
 // 把海況數字轉成「看得懂」的語意：防寒衣、風級描述、羅盤方位、潮汐解析。
 
-import type { Activity, Rating } from "./types";
+import type { Activity, Condition, Rating } from "./types";
 
 /* ---------- 子潛點屬性的中文標籤 ---------- */
 
@@ -56,6 +56,41 @@ export const RATING_HEX: Record<Rating, { base: string; soft: string; text: stri
 
 export function ratingOf(r: Rating | null | undefined): Rating {
   return r && r in RATING_HEX ? r : "unknown";
+}
+
+/* ---------- 依活動別的燈號 ---------- */
+
+export type ActivityKind = "dive" | "surf";
+
+export const ACTIVITY_KIND_ZH: Record<ActivityKind, string> = {
+  dive: "潛水",
+  surf: "衝浪",
+};
+
+/** 這個地區主要看潛水還是衝浪燈號：只標了 surf → surf，其餘 → dive。
+ *  後端 services/build.py 的 primary_activity() 是同一套規則。 */
+export function primaryActivity(activities: string[] | null | undefined): ActivityKind {
+  const acts = activities ?? [];
+  const diveLike = acts.some((a) => a === "scuba" || a === "freedive" || a === "snorkel");
+  return acts.includes("surf") && !diveLike ? "surf" : "dive";
+}
+
+/** 這個地區同時有潛水與衝浪兩種燈號可看。 */
+export function hasBothKinds(activities: string[] | null | undefined): boolean {
+  const acts = activities ?? [];
+  const diveLike = acts.some((a) => a === "scuba" || a === "freedive" || a === "snorkel");
+  return acts.includes("surf") && diveLike;
+}
+
+/** 取某活動別的燈號；舊資料沒有 ratings 就退回相容欄位 rating。 */
+export function ratingFor(c: Condition | null | undefined, kind: ActivityKind): Rating {
+  if (!c) return "unknown";
+  return ratingOf((c.ratings?.[kind]?.rating ?? c.rating) as Rating);
+}
+
+/** 取某活動別的判讀原因；沒有就退回相容欄位。 */
+export function reasonsFor(c: Condition | null | undefined, kind: ActivityKind): string[] {
+  return c?.ratings?.[kind]?.reasons ?? c?.rating_reasons ?? [];
 }
 
 /* ---------- 防寒衣建議（依水溫，潛水用） ---------- */

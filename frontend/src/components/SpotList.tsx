@@ -1,6 +1,7 @@
 // 地區內頁的「潛點 / 浪點細分」清單。海況數據是地區層級的，這裡列出各下水點的
 // 靜態特性（底質、朝向、程度、深度…），之後會依 facing_deg 給每個點各自的燈號。
 
+import { directionsUrl } from "@/lib/nav";
 import {
   ACTIVITY_ZH,
   BOTTOM_ZH,
@@ -50,6 +51,18 @@ function SpotRow({ spot }: { spot: Spot }) {
       )}
 
       {spot.blurb && <p className="mt-1.5 text-xs leading-relaxed text-slate-600">{spot.blurb}</p>}
+
+      <a
+        href={directionsUrl(spot.lat, spot.lon)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-sky-600 hover:underline"
+      >
+        <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path d="M10 2C6.7 2 4 4.7 4 8c0 4.2 5.3 9.4 5.6 9.7a.6.6 0 0 0 .8 0C10.7 17.4 16 12.2 16 8c0-3.3-2.7-6-6-6Zm0 8.2A2.2 2.2 0 1 1 10 5.8a2.2 2.2 0 0 1 0 4.4Z" />
+        </svg>
+        導航{spot.coord_approx ? "（約略位置）" : ""}
+      </a>
 
       {spot.coord_approx && (
         <p className="mt-1.5 text-[11px] text-slate-400">※ 座標為約略位置，尚待校正</p>

@@ -1,6 +1,12 @@
 // 未來幾天：一排燈號 chip，用原生 <details> 點開才看細節數字（漸進揭露、不需 client JS）。
 
-import { compassZh, RATING_HEX, ratingOf } from "@/lib/sea";
+import {
+  type ActivityKind,
+  compassZh,
+  RATING_HEX,
+  ratingFor,
+  reasonsFor,
+} from "@/lib/sea";
 import { isoPlusDays, todayInTaipei, updatedLabel } from "@/lib/format";
 import type { Condition } from "@/lib/types";
 
@@ -29,7 +35,13 @@ function Cell({ k, v, sub }: { k: string; v: string; sub?: string }) {
   );
 }
 
-export default function ForecastStrip({ days }: { days: Condition[] }) {
+export default function ForecastStrip({
+  days,
+  activity = "dive",
+}: {
+  days: Condition[];
+  activity?: ActivityKind;
+}) {
   if (days.length === 0) return null;
 
   return (
@@ -37,7 +49,8 @@ export default function ForecastStrip({ days }: { days: Condition[] }) {
       <h2 className="mb-2 text-sm font-bold text-slate-500">未來預報</h2>
       <div className="space-y-2">
         {days.map((c) => {
-          const col = RATING_HEX[ratingOf(c.rating)];
+          const col = RATING_HEX[ratingFor(c, activity)];
+          const dayReasons = reasonsFor(c, activity);
           return (
             <details key={c.date} className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
@@ -79,9 +92,9 @@ export default function ForecastStrip({ days }: { days: Condition[] }) {
                   <Cell k="滿潮" v={c.tide_high ?? "—"} />
                   <Cell k="乾潮" v={c.tide_low ?? "—"} />
                 </div>
-                {c.rating_reasons.length > 0 && (
+                {dayReasons.length > 0 && (
                   <ul className="mt-3 space-y-1 text-xs text-slate-500">
-                    {c.rating_reasons.map((r, k) => (
+                    {dayReasons.map((r, k) => (
                       <li key={k}>· {r}</li>
                     ))}
                   </ul>

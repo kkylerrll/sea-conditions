@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { useState } from "react";
 import TaiwanMap from "@/components/TaiwanMap";
-import { RATING_HEX, ratingOf } from "@/lib/sea";
+import {
+  ACTIVITY_KIND_ZH,
+  primaryActivity,
+  RATING_HEX,
+  ratingFor,
+} from "@/lib/sea";
 import type { Location } from "@/lib/types";
 
 function fmt(v: number | null | undefined, unit: string) {
@@ -32,7 +37,7 @@ export default function HomeExplorer({ locations }: { locations: Location[] }) {
 
         <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           {locations.map((loc) => {
-            const c = RATING_HEX[ratingOf(loc.today?.rating ?? "unknown")];
+            const c = RATING_HEX[ratingFor(loc.today, primaryActivity(loc.activities))];
             return (
               <li key={loc.slug}>
                 <Link
@@ -65,7 +70,8 @@ export default function HomeExplorer({ locations }: { locations: Location[] }) {
 
 function SelectedCard({ location, onClose }: { location: Location; onClose: () => void }) {
   const t = location.today!;
-  const c = RATING_HEX[ratingOf(t.rating)];
+  const kind = primaryActivity(location.activities);
+  const c = RATING_HEX[ratingFor(t, kind)];
 
   return (
     <div className="rounded-2xl border-2 bg-white p-4 shadow-md" style={{ borderColor: c.base }}>
@@ -90,7 +96,7 @@ function SelectedCard({ location, onClose }: { location: Location; onClose: () =
         style={{ background: c.soft, color: c.text }}
       >
         <span className="h-2 w-2 rounded-full" style={{ background: c.base }} />
-        今日{c.label}
+        今日{ACTIVITY_KIND_ZH[kind]}{c.label}
       </div>
 
       <div className="mt-3 grid grid-cols-3 gap-2 text-center">

@@ -8,6 +8,17 @@ from pydantic import BaseModel, ConfigDict
 # Python 3.9 相容：用 Optional[...] / List[...]，不用 `X | None`。
 
 
+class ActivityRating(BaseModel):
+    rating: str
+    score: Optional[float] = None
+    reasons: List[str] = []
+
+
+class Ratings(BaseModel):
+    dive: Optional[ActivityRating] = None
+    surf: Optional[ActivityRating] = None
+
+
 class ConditionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -30,6 +41,7 @@ class ConditionOut(BaseModel):
     rating: str
     rating_score: Optional[float] = None
     rating_reasons: List[str] = []
+    ratings: Optional[Ratings] = None
 
     advice_text: Optional[str] = None
     advice_model: Optional[str] = None

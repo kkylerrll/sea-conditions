@@ -123,10 +123,14 @@ class DailyCondition(Base):
     tide_high: Mapped[Optional[str]] = mapped_column(String(40))    # 例："05:12 / 17:40"
     tide_low: Mapped[Optional[str]] = mapped_column(String(40))
 
-    # 燈號（第三步）
+    # 燈號。rating/rating_score/rating_reasons = 潛水值（向後相容）；
+    # ratings = 依活動別的完整燈號，例：
+    #   {"dive": {"rating": "...", "score": 70, "reasons": [...]},
+    #    "surf": {"rating": "...", "score": 45, "reasons": [...]}}
     rating: Mapped[str] = mapped_column(String(10), default="unknown")  # green | yellow | red | unknown
     rating_score: Mapped[Optional[float]] = mapped_column(Float)        # 0–100，越高越適合
     rating_reasons: Mapped[list] = mapped_column(JSON, default=list)
+    ratings: Mapped[Optional[dict]] = mapped_column(JSON)
 
     # AI 建議（第四步）
     advice_text: Mapped[Optional[str]] = mapped_column(Text)

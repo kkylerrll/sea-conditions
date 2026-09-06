@@ -4,17 +4,22 @@
 //     只在浪高（SeaStateHero）底下附一行推估值，並註明非實測。
 
 import {
+  ACTIVITY_KIND_ZH,
+  type ActivityKind,
   compassZh,
+  hasBothKinds,
   nowMinutesTaipei,
   parseTideTimes,
   RATING_HEX,
+  ratingFor,
   ratingOf,
+  reasonsFor,
   wetsuitAdvice,
   windDesc,
   windDirZh,
   windFromDeg,
 } from "@/lib/sea";
-import type { Condition } from "@/lib/types";
+import type { Condition, Rating } from "@/lib/types";
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * clamp(t, 0, 1);
@@ -32,8 +37,16 @@ function sineWavePath(width: number, amp: number, wavelength: number, baseY: num
   return d;
 }
 
-export function SeaStateHero({ c }: { c: Condition }) {
-  const rk = ratingOf(c.rating);
+export function SeaStateHero({
+  c,
+  rating,
+  activityLabel,
+}: {
+  c: Condition;
+  rating?: Rating;
+  activityLabel?: string;
+}) {
+  const rk = ratingOf(rating ?? c.rating);
   const col = RATING_HEX[rk];
   const h = c.wave_height_m;
   const amp = h == null ? 6 : clamp(lerp(3, 26, h / 3.5), 3, 26);
@@ -74,7 +87,7 @@ export function SeaStateHero({ c }: { c: Condition }) {
           style={{ background: "#fff", color: col.text }}
         >
           <span className="h-2 w-2 rounded-full" style={{ background: col.base }} />
-          {col.label}
+          {activityLabel ? `${activityLabel}・${col.label}` : col.label}
         </span>
       </div>
 
@@ -92,6 +105,45 @@ export function SeaStateHero({ c }: { c: Condition }) {
           </g>
         </svg>
       </div>
+    </div>
+  );
+}
+
+/* ══════════ 1b. 潛水 / 衝浪 分開的燈號 ══════════ */
+// 只有同時支援潛水與衝浪的地區才顯示（同一片海，潛水怕浪、衝浪要浪，燈號常相反）。
+
+export function ActivityRatings({
+  c,
+  activities,
+}: {
+  c: Condition;
+  activities: string[];
+}) {
+  if (!hasBothKinds(activities)) return null;
+  const kinds: ActivityKind[] = ["dive", "surf"];
+
+  return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      {kinds.map((k) => {
+        const col = RATING_HEX[ratingFor(c, k)];
+        const reason = reasonsFor(c, k)[0];
+        return (
+          <div
+            key={k}
+            className="rounded-2xl border bg-white p-3 shadow-sm"
+            style={{ borderColor: col.base }}
+          >
+            <div className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: col.base }} />
+              <span className="text-sm font-bold text-slate-900">{ACTIVITY_KIND_ZH[k]}</span>
+              <span className="text-xs font-semibold" style={{ color: col.text }}>
+                {col.label}
+              </span>
+            </div>
+            {reason && <p className="mt-1 text-xs leading-snug text-slate-500">{reason}</p>}
+          </div>
+        );
+      })}
     </div>
   );
 }
