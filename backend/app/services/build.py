@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import DailyCondition, Location
+from ..tz import today_taipei
 from .advice import generate_advice
 from .rating import beaufort, rate
 
@@ -20,7 +21,7 @@ from .rating import beaufort, rate
 def mock_conditions(location: Location, days: int = 4) -> list[dict]:
     """用 slug + 日期當種子產生穩定但有變化的示範海況，讓畫面一開始就有東西看。"""
 
-    today = dt.date.today()
+    today = today_taipei()
     rows: list[dict] = []
     for offset in range(days):
         date = today + dt.timedelta(days=offset)

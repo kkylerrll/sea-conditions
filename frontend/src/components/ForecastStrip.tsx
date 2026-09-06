@@ -1,14 +1,21 @@
 // 未來幾天：一排燈號 chip，用原生 <details> 點開才看細節數字（漸進揭露、不需 client JS）。
 
 import { RATING_HEX, ratingOf } from "@/lib/sea";
-import { updatedLabel } from "@/lib/format";
+import { isoPlusDays, todayInTaipei, updatedLabel } from "@/lib/format";
 import type { Condition } from "@/lib/types";
 
 const WEEKDAY = ["日", "一", "二", "三", "四", "五", "六"];
 
-function dayHead(iso: string, i: number) {
+function dayHead(iso: string) {
   const d = new Date(iso + "T00:00:00");
-  const head = i === 0 ? "今天" : i === 1 ? "明天" : `${d.getMonth() + 1}/${d.getDate()}`;
+  const today = todayInTaipei();
+  // 「今天／明天」比對資料列自己的日期與台北今日，不再用陣列位置猜
+  const head =
+    iso === today
+      ? "今天"
+      : iso === isoPlusDays(today, 1)
+        ? "明天"
+        : `${d.getMonth() + 1}/${d.getDate()}`;
   return `${head}（${WEEKDAY[d.getDay()]}）`;
 }
 
@@ -21,21 +28,20 @@ function Cell({ k, v }: { k: string; v: string }) {
   );
 }
 
-export default function ForecastStrip({ days, startIndex = 0 }: { days: Condition[]; startIndex?: number }) {
+export default function ForecastStrip({ days }: { days: Condition[] }) {
   if (days.length === 0) return null;
 
   return (
     <section>
       <h2 className="mb-2 text-sm font-bold text-slate-500">未來預報</h2>
       <div className="space-y-2">
-        {days.map((c, idx) => {
-          const i = startIndex + idx;
+        {days.map((c) => {
           const col = RATING_HEX[ratingOf(c.rating)];
           return (
             <details key={c.date} className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
                 <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: col.base }} />
-                <span className="flex-1 text-sm font-semibold text-slate-900">{dayHead(c.date, i)}</span>
+                <span className="flex-1 text-sm font-semibold text-slate-900">{dayHead(c.date)}</span>
                 <span className="text-xs font-medium" style={{ color: col.text }}>
                   {col.label}
                 </span>

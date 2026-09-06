@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..db import get_db
 from ..models import DailyCondition, Location
 from ..schemas import ConditionOut, LocationWithConditions
+from ..tz import today_taipei
 
 router = APIRouter(prefix="/api", tags=["locations"])
 
@@ -27,7 +28,7 @@ def _preferred(conditions: list[DailyCondition]) -> dict[dt.date, DailyCondition
 
 @router.get("/locations", response_model=list[LocationWithConditions])
 def list_locations(db: Session = Depends(get_db)):
-    today = dt.date.today()
+    today = today_taipei()
     locations = db.scalars(
         select(Location).options(selectinload(Location.conditions)).order_by(Location.id)
     ).all()
@@ -45,7 +46,7 @@ def list_locations(db: Session = Depends(get_db)):
 
 @router.get("/locations/{slug}", response_model=LocationWithConditions)
 def get_location(slug: str, db: Session = Depends(get_db)):
-    today = dt.date.today()
+    today = today_taipei()
     loc = db.scalar(
         select(Location).options(selectinload(Location.conditions)).where(Location.slug == slug)
     )

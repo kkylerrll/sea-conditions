@@ -8,3 +8,5 @@ anthropic>=0.39
 python-dotenv>=1.0
 # 只有用 Postgres 時才需要；SQLite 不會 import 它
 psycopg[binary]>=3.2
+# python:3.12-slim 沒有系統 tzdata，zoneinfo("Asia/Taipei") 需要這個才不會炸
+tzdata>=2024.1

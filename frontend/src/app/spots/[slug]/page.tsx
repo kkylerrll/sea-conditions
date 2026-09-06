@@ -94,7 +94,7 @@ export default async function SpotPage({ params }: { params: { slug: string } })
             {today.advice_model ? ` · 建議由 ${today.advice_model} 生成` : " · 建議為系統模板"}
           </p>
 
-          <ForecastStrip days={rest} startIndex={1} />
+          <ForecastStrip days={rest} />
         </>
       )}
     </main>

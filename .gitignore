@@ -18,3 +18,7 @@ frontend/.env.local
 
 # CWA 潮汐原始樣本（自動產生，供除錯）
 backend/cwa_sample_tide.json
+
+# typescript incremental build info
+frontend/tsconfig.tsbuildinfo
+*.tsbuildinfo
