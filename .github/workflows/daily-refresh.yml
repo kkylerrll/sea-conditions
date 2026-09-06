@@ -13,8 +13,9 @@ jobs:
     steps:
       - name: 呼叫後端 /api/refresh
         run: |
-          curl -fsS -X POST "${{ vars.API_BASE }}/api/refresh?wait=true" \
+          curl -fsS -X POST "${{ vars.API_BASE || 'https://sea-conditions-api.onrender.com' }}/api/refresh?wait=true" \
             -H "Content-Type: application/json" \
             --max-time 300
-        # 在 repo Settings → Secrets and variables → Actions → Variables
-        # 新增 API_BASE = https://sea-conditions-api.fly.dev
+        # 預設打 Render 網址；要換後端時在
+        # repo Settings → Secrets and variables → Actions → Variables
+        # 設 API_BASE 覆蓋即可

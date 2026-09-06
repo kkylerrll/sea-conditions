@@ -14,11 +14,11 @@
 
 三個平台都有免費方案、都不需信用卡（原本規劃的 Fly 需綁卡，改用 Render）。
 
-| 平台 | 角色 | 免費方案限制 |
-|---|---|---|
-| Vercel | 前端 Next.js | Hobby 無限制夠用 |
-| Render | 後端 FastAPI | 閒置 15 分鐘休眠，下一個請求冷啟動 ~50 秒 |
-| Supabase | Postgres | 500MB、7 天完全無連線會暫停 |
+| 平台     | 角色         | 免費方案限制                              |
+| -------- | ------------ | ----------------------------------------- |
+| Vercel   | 前端 Next.js | Hobby 無限制夠用                          |
+| Render   | 後端 FastAPI | 閒置 15 分鐘休眠，下一個請求冷啟動 ~50 秒 |
+| Supabase | Postgres     | 500MB、7 天完全無連線會暫停               |
 
 ---
 
@@ -26,14 +26,16 @@
 
 - [x] 步驟 1：GitHub repo — https://github.com/kkylerrll/sea-conditions
 - [x] 步驟 2：Supabase 專案（連線字串已取得）
-- [ ] 步驟 3：後端 → Render
-- [ ] 步驟 4：前端 → Vercel
-- [ ] 步驟 5：接 CORS + 每日排程
+- [x] 步驟 3：後端 → Render（https://sea-conditions-api.onrender.com）
+- [x] 步驟 4：前端 → Vercel（https://sea-conditions.vercel.app）
+- [x] 步驟 5：接 CORS + 每日排程（GitHub Actions 綠勾）
 
 `DATABASE_URL`（後端格式）：
+
 ```
 postgresql+psycopg://postgres.<project_ref>:<你的密碼>@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require
 ```
+
 （`<...>` 換成實際值。**別 commit 這串。**）
 
 ---
@@ -106,14 +108,14 @@ curl -X POST 'https://sea-conditions-api.onrender.com/api/refresh?wait=true'
 
 ## 每月成本
 
-| 項目 | 費用 |
-|---|---|
-| Vercel Hobby | $0 |
-| Render Free（後端）| $0 |
-| Supabase Free | $0 |
-| GitHub Actions（public repo）| $0 |
-| Open-Meteo / CWA API | $0 |
-| **合計** | **$0**（不開 AI 建議的話）|
+| 項目                          | 費用                       |
+| ----------------------------- | -------------------------- |
+| Vercel Hobby                  | $0                         |
+| Render Free（後端）           | $0                         |
+| Supabase Free                 | $0                         |
+| GitHub Actions（public repo） | $0                         |
+| Open-Meteo / CWA API          | $0                         |
+| **合計**                      | **$0**（不開 AI 建議的話） |
 
 代價：Render 免費方案閒置會休眠，冷啟動 ~50 秒。要無休眠就升 Render Starter（$7/月）或改回 Fly（綁卡，~$2–4/月，`backend/fly.toml` 已備妥）。
 
