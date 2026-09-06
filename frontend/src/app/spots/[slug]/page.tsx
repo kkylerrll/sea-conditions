@@ -7,6 +7,7 @@ import {
   TideCurve,
   WindCompass,
 } from "@/components/SeaVisuals";
+import SpotList from "@/components/SpotList";
 import { getLocation } from "@/lib/api";
 import { updatedLabel } from "@/lib/format";
 import { RATING_HEX, ratingOf } from "@/lib/sea";
@@ -43,15 +44,6 @@ export default async function SpotPage({ params }: { params: { slug: string } })
           {location.name_en ? ` · ${location.name_en}` : ""}
         </p>
         <p className="mt-2 text-sm leading-relaxed text-slate-600">{location.blurb}</p>
-        {location.spots.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {location.spots.map((s) => (
-              <span key={s} className="rounded-full bg-sky-50 px-2.5 py-1 text-xs text-sky-700">
-                {s}
-              </span>
-            ))}
-          </div>
-        )}
       </header>
 
       {!today ? (
@@ -70,6 +62,8 @@ export default async function SpotPage({ params }: { params: { slug: string } })
               {today.advice_text}
             </div>
           )}
+
+          <SpotList spots={location.spot_list} />
 
           <div className="grid gap-3 sm:grid-cols-2">
             <WindCompass c={today} />

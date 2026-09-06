@@ -22,6 +22,26 @@ export interface Condition {
   advice_model: string | null;
 }
 
+export type Activity = "scuba" | "freedive" | "snorkel" | "surf";
+
+export interface Spot {
+  slug: string;
+  name: string;
+  name_en: string | null;
+  lat: number;
+  lon: number;
+  coord_approx: boolean;
+  activities: Activity[];
+  bottom: string | null; // sand|reef|point|rivermouth|harbour|wreck|artificial|mixed
+  facing_deg: number | null;
+  shelter: string | null; // open|semi|sheltered
+  level: string | null; // beginner|intermediate|advanced
+  entry: string | null; // shore|boat
+  depth_min_m: number | null;
+  depth_max_m: number | null;
+  blurb: string;
+}
+
 export interface Location {
   slug: string;
   name: string;
@@ -34,4 +54,5 @@ export interface Location {
   lon: number;
   today: Condition | null;
   forecast: Condition[];
+  spot_list: Spot[];
 }

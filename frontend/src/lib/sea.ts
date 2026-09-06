@@ -1,6 +1,49 @@
 // 把海況數字轉成「看得懂」的語意：防寒衣、風級描述、羅盤方位、潮汐解析。
 
-import type { Rating } from "./types";
+import type { Activity, Rating } from "./types";
+
+/* ---------- 子潛點屬性的中文標籤 ---------- */
+
+export const ACTIVITY_ZH: Record<Activity, string> = {
+  scuba: "水肺",
+  freedive: "自由潛水",
+  snorkel: "浮潛",
+  surf: "衝浪",
+};
+
+export const BOTTOM_ZH: Record<string, string> = {
+  sand: "沙底",
+  reef: "礁石",
+  point: "岬礁",
+  rivermouth: "河口",
+  harbour: "漁港內",
+  wreck: "沈船",
+  artificial: "人工魚礁",
+  mixed: "沙礁混合",
+};
+
+export const SHELTER_ZH: Record<string, string> = {
+  open: "全開放",
+  semi: "半遮蔽",
+  sheltered: "遮蔽（灣/港內）",
+};
+
+export const LEVEL_ZH: Record<string, string> = {
+  beginner: "初級",
+  intermediate: "中級",
+  advanced: "進階",
+};
+
+export const ENTRY_ZH: Record<string, string> = {
+  shore: "岸潛",
+  boat: "船潛",
+};
+
+export function depthLabel(min: number | null, max: number | null): string | null {
+  if (min == null && max == null) return null;
+  if (min != null && max != null) return `${min}–${max} m`;
+  return `${min ?? max} m`;
+}
 
 /* ---------- 燈號顏色 ---------- */
 
