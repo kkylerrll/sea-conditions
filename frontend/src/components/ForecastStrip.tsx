@@ -19,11 +19,12 @@ function dayHead(iso: string) {
   return `${head}（${WEEKDAY[d.getDay()]}）`;
 }
 
-function Cell({ k, v }: { k: string; v: string }) {
+function Cell({ k, v, sub }: { k: string; v: string; sub?: string }) {
   return (
     <div className="rounded-lg bg-slate-50 px-3 py-2">
       <div className="text-[11px] text-slate-500">{k}</div>
       <div className="mt-0.5 text-sm font-semibold tabular-nums text-slate-800">{v}</div>
+      {sub && <div className="mt-0.5 text-[10px] font-normal leading-tight text-slate-400">{sub}</div>}
     </div>
   );
 }
@@ -61,13 +62,20 @@ export default function ForecastStrip({ days }: { days: Condition[] }) {
                   <p className="mb-3 text-sm leading-relaxed text-slate-700">{c.advice_text}</p>
                 )}
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <Cell k="浪高" v={c.wave_height_m != null ? `${c.wave_height_m} m` : "—"} />
+                  <Cell
+                    k="浪高"
+                    v={c.wave_height_m != null ? `${c.wave_height_m} m` : "—"}
+                    sub={
+                      c.visibility_m != null
+                        ? `水下能見度約 ${c.visibility_m} m（由浪高推估，非實測）`
+                        : undefined
+                    }
+                  />
                   <Cell k="湧浪週期" v={c.wave_period_s != null ? `${c.wave_period_s} s` : "—"} />
                   <Cell k="湧浪來向" v={c.wave_dir ? `${compassZh(c.wave_dir)}（${c.wave_dir}）` : "—"} />
                   <Cell k="風力" v={c.wind_scale != null ? `${c.wind_scale} 級` : "—"} />
                   <Cell k="風向 / 陣風" v={c.wind_dir ? `${c.wind_dir} / ${c.gust_ms ?? "—"}` : "—"} />
                   <Cell k="水溫" v={c.water_temp_c != null ? `${c.water_temp_c} °C` : "—"} />
-                  <Cell k="能見度（估）" v={c.visibility_m != null ? `${c.visibility_m} m` : "—"} />
                   <Cell k="滿潮" v={c.tide_high ?? "—"} />
                   <Cell k="乾潮" v={c.tide_low ?? "—"} />
                 </div>

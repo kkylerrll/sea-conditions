@@ -1,5 +1,7 @@
-// 把單日海況數字畫成圖：海面波浪、風羅盤、潮汐曲線、水溫計、能見度條。
+// 把單日海況數字畫成圖：海面波浪、風羅盤、潮汐曲線、水溫計。
 // 全部純 SVG + CSS 動畫（globals.css），不需 client JS；動畫都吃 prefers-reduced-motion。
+// 註：水下能見度是「浪高的線性換算」，沒有獨立資訊，因此不做成獨立卡片，
+//     只在浪高（SeaStateHero）底下附一行推估值，並註明非實測。
 
 import {
   compassZh,
@@ -59,6 +61,13 @@ export function SeaStateHero({ c }: { c: Condition }) {
             湧浪週期 {c.wave_period_s == null ? "—" : `約 ${Math.round(c.wave_period_s)} 秒一波`}
             {c.wave_dir ? ` · 來向 ${compassZh(c.wave_dir)}（${c.wave_dir}）` : ""}
           </p>
+          {c.visibility_m != null && (
+            <p className="mt-2 max-w-[15rem] text-[11px] leading-snug text-slate-400">
+              水下能見度約 <span className="font-semibold text-slate-500">{c.visibility_m} m</span>
+              <br />
+              由浪高換算的粗估值，非現場觀測
+            </p>
+          )}
         </div>
         <span
           className="mb-1 inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-sm font-semibold"
@@ -296,33 +305,6 @@ export function TempGauge({ c }: { c: Condition }) {
         </p>
         <p className="mt-1 text-sm font-semibold text-sky-700">建議 {suit}</p>
         <p className="text-xs text-slate-400">{note}</p>
-      </div>
-    </figure>
-  );
-}
-
-/* ══════════ 5. 能見度條 ══════════ */
-
-export function VisibilityBar({ c }: { c: Condition }) {
-  const v = c.visibility_m;
-  const pct = v == null ? 0 : clamp(v / 15, 0, 1) * 100;
-  const tag = v == null ? "—" : v >= 10 ? "清澈" : v >= 6 ? "普通" : "偏濁";
-
-  return (
-    <figure className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-baseline justify-between">
-        <figcaption className="text-xs font-medium text-slate-500">水下能見度（估）</figcaption>
-        <span className="text-xs text-slate-400">{tag}</span>
-      </div>
-      <p className="mt-1 text-2xl font-extrabold tabular-nums text-slate-900">
-        {v == null ? "—" : `${v} m`}
-      </p>
-      <div className="mt-2 h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
-        <div className="h-full rounded-full bg-gradient-to-r from-sky-300 to-sky-600" style={{ width: `${pct}%` }} />
-      </div>
-      <div className="mt-1 flex justify-between text-[10px] text-slate-300">
-        <span>0</span>
-        <span>15 m+</span>
       </div>
     </figure>
   );

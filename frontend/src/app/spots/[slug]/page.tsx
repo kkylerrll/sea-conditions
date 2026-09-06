@@ -5,7 +5,6 @@ import {
   SeaStateHero,
   TempGauge,
   TideCurve,
-  VisibilityBar,
   WindCompass,
 } from "@/components/SeaVisuals";
 import { getLocation } from "@/lib/api";
@@ -78,7 +77,6 @@ export default async function SpotPage({ params }: { params: { slug: string } })
           </div>
 
           <TideCurve c={today} />
-          <VisibilityBar c={today} />
 
           {today.rating_reasons.length > 0 && (
             <ul className="space-y-1 rounded-2xl border border-slate-200 bg-white p-4 text-xs text-slate-500 shadow-sm">
