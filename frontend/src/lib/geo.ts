@@ -1,5 +1,6 @@
 // 台灣地圖投影：把經緯度線性對應到 SVG 座標。
-// 手繪的台灣輪廓 (components/TaiwanMap) 用的是同一組常數，marker 才會落在對的位置。
+// scripts/gen-taiwan-paths.mjs 產生 taiwan-paths.ts 時用的是同一組常數，
+// 海岸線 path 與 marker 才會落在同一個座標系。
 
 export const MAP_W = 300;
 export const MAP_H = 420;
@@ -15,14 +16,12 @@ export function project(lat: number, lon: number): { x: number; y: number } {
   return { x, y };
 }
 
-// 離島 marker 微調：真實座標投影後可能壓在輪廓線上，往外海推一點更好看。
-// 現在離島輪廓改用 taiwan-paths.ts 的真實幾何（全台檢視時放大顯示），
-// pin 落在島的中心即可，微調量比手繪橢圓時期小。
+// 本島潛點的 marker 微調：這些點的實際下水位置在岸邊甚至離岸一點，
+// 投影座標會壓在海岸線上，往外海推幾單位比較好看。
+// 離島（澎湖 / 綠島 / 蘭嶼 / 小琉球）不在這裡 —— 那幾個 marker 由
+// TaiwanMap 直接放在 taiwan-paths.ts 的島嶼 bounding box 中心，
+// 全台放大顯示與島嶼層級真實比例兩種檢視下都會落在島上。
 export const SPOT_NUDGE: Record<string, { dx: number; dy: number }> = {
-  xiaoliuqiu: { dx: 0, dy: 0 },
-  penghu: { dx: -2, dy: 0 },
-  lyudao: { dx: 2, dy: 0 },
-  lanyu: { dx: 2, dy: 2 },
   longdong: { dx: 4, dy: -4 },
   "kenting-houbihu": { dx: 0, dy: 6 },
 };
