@@ -155,6 +155,89 @@ Render 的 `alembic upgrade head` 只會跑 baseline 之後的遷移（例如新
 
 ---
 
+## 🚨 修復手冊：正式後端卡在舊版（沒 stamp 造成的靜默回滾）
+
+**症狀**：`/health` 回 200、GitHub Actions 每日排程也是綠勾，但 `/api/locations`
+回來的資料是舊 schema —— `spots` 還是字串陣列而不是 `spot_list`、`today` 裡沒有
+`wave_dir` 也沒有 `ratings`。代表 Render 正在跑導入 Alembic 之前的舊 image。
+
+**成因**：Supabase 的表當初是 `create_all` 建的，沒有 `alembic_version` 表。
+之後每次 deploy 的 `alembic upgrade head` 都在 baseline 的 `CREATE TABLE` 炸掉 →
+容器起不來 → Render 靜默保留上一版 build 繼續服務。所以「服務活著」完全不代表
+「部署成功」。
+
+遷移鏈：`81e1c67e1b76`(baseline) → `494e5460a629`(wave_dir) →
+`474f847fb5b2`(spots 表) → `97df58913f05`(ratings)＝ head。
+
+### 步驟 1：確認 Supabase 現況
+
+Supabase → SQL Editor：
+
+```sql
+select table_name from information_schema.tables
+where table_schema = 'public' order by table_name;
+
+select * from alembic_version;   -- 報錯 = 表不存在 = 正是本症狀
+```
+
+### 步驟 2：補上 baseline 版本號（只做一次）
+
+Render Free 方案沒有 Shell 分頁，用以下任一種：
+
+**A. Supabase SQL Editor**（不需任何 CLI，等同 `alembic stamp`）
+
+```sql
+create table if not exists alembic_version (
+  version_num varchar(32) not null,
+  constraint alembic_version_pkc primary key (version_num)
+);
+insert into alembic_version (version_num) values ('81e1c67e1b76')
+on conflict do nothing;
+```
+
+**B. 本機接正式 DB**（`backend/.venv` 已備妥 psycopg／alembic）
+
+```bash
+cd backend
+export DATABASE_URL='postgresql+psycopg://postgres.<ref>:<密碼>@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require'
+.venv/bin/alembic current          # 應為空
+.venv/bin/alembic stamp 81e1c67e1b76
+.venv/bin/alembic upgrade head     # 也可以留給 Render 的 CMD 跑
+.venv/bin/alembic current          # 應顯示 97df58913f05 (head)
+```
+
+### 步驟 3：讓 Render 重新部署
+
+Render Dashboard → `sea-conditions-api` → **Manual Deploy → Deploy latest commit**。
+**要看 build log 裡 `alembic upgrade head` 真的跑完且 uvicorn 起來**，不要只看服務有沒有回 200。
+
+### 步驟 4：補資料（stamp 之後一定要做）
+
+`app/main.py` 的自動 seed 只在「一筆地點都沒有」時才觸發，正式環境已有 6 筆舊地點，
+所以**新的 13 個地區和子潛點不會自己長出來**，必須手動跑一次（依 slug upsert，重複執行安全）：
+
+```bash
+cd backend
+DATABASE_URL='<同上>' .venv/bin/python -m app.seed
+curl -X POST 'https://sea-conditions-api.onrender.com/api/refresh?wait=true'
+```
+
+### 步驟 5：驗收（用 revision-specific 欄位，不要用 /health）
+
+```bash
+curl -s https://sea-conditions-api.onrender.com/api/locations | python3 -c "
+import json,sys; d=json.load(sys.stdin); x=d[0]
+print('spot_list:', 'spot_list' in x, '| 數量:', len(x.get('spot_list', [])))
+print('ratings :', 'ratings' in (x.get('today') or {}))
+print('地區總數:', len(d))          # 應為 13
+"
+```
+
+三項都對才算部署成功。`/health` 和排程綠勾在整段故障期間都是正常的，
+**永遠不要拿它們當部署成功的證據**。
+
+---
+
 ## 之後要補的（非上線必須）
 
 - **`/api/refresh` 加保護**：現在是公開端點（只是重抓資料、上游 API 免費，風險低）。可加 `REFRESH_TOKEN`。
