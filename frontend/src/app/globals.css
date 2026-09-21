@@ -35,3 +35,101 @@ body {
     animation: none !important;
   }
 }
+
+/* ============ 首頁滾動敘事：從空氣到深海 ============ */
+
+/* 背景漸層本身就是靠一般文件流畫在 .landing-scene 上，不用 position:fixed，
+   所以就算沒有 JS、--progress 停在預設值 0，這個漸層照樣完整存在——
+   使用者捲到哪，看到的自然就是漸層對應的那一段顏色，不需要 JS 運算顏色。 */
+.landing-scene {
+  --progress: 0;
+  background: linear-gradient(
+    180deg,
+    #f0f9ff 0%,
+    #dff2ff 5%,
+    #7dd3fc 12%,
+    #38bdf8 19%,
+    #0ea5e9 24%,
+    #075985 29%,
+    #0c4a6e 40%,
+    #082f49 55%,
+    #051224 70%,
+    #030b1a 85%,
+    #020617 100%
+  );
+}
+
+/* 區塊進場：預設（沒有 .reveal-armed）一律可見，JS 掛上 .reveal-armed 之後
+   才會先隱藏、等 IntersectionObserver 判定進入視窗再淡入。 */
+.reveal-armed [data-reveal] {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.reveal-armed [data-reveal].is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* 深度標記（5m/18m/30m）：預設可見，JS 掛上 .progress-armed 之後才改成
+   跟著 --progress 淡入，用 min()/max() 做出「過了某個捲動進度才出現」的效果，
+   不需要 JS 算顏色或位移，純 CSS calc()。 */
+.depth-marker {
+  opacity: 1;
+}
+.progress-armed .depth-marker {
+  transition: opacity 0.4s ease;
+}
+.progress-armed .depth-marker[data-at="1"] {
+  opacity: max(0, min(1, calc((var(--progress) - 0.36) / 0.08)));
+}
+.progress-armed .depth-marker[data-at="2"] {
+  opacity: max(0, min(1, calc((var(--progress) - 0.52) / 0.08)));
+}
+.progress-armed .depth-marker[data-at="3"] {
+  opacity: max(0, min(1, calc((var(--progress) - 0.68) / 0.08)));
+}
+
+/* Hero 捲動提示：預設常駐顯示；.progress-armed 時隨捲動快速淡出。 */
+.scroll-cue {
+  opacity: 1;
+}
+.progress-armed .scroll-cue {
+  opacity: max(0, min(1, calc(1 - var(--progress) / 0.04)));
+}
+
+@keyframes scroll-cue-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(6px);
+  }
+}
+.scroll-cue-arrow {
+  animation: scroll-cue-bounce 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal-armed [data-reveal] {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .depth-marker,
+  .progress-armed .depth-marker {
+    opacity: 1 !important;
+    transition: none !important;
+  }
+  .scroll-cue,
+  .progress-armed .scroll-cue {
+    opacity: 1 !important;
+  }
+  .scroll-cue-arrow {
+    animation: none !important;
+  }
+  .sticky-landing-cta {
+    transition: none !important;
+  }
+}
