@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MAP_H, MAP_W, project, SPOT_NUDGE } from "@/lib/geo";
-import { primaryActivity, RATING_HEX, ratingFor } from "@/lib/sea";
+import { ACTIVITY_KIND_ZH, type ActivityKind, RATING_HEX, ratingFor, supportsActivity } from "@/lib/sea";
 import {
   FULL_VIEW,
   ISLAND_BOXES,
@@ -76,9 +76,10 @@ interface Props {
   locations: Location[];
   selected: string | null;
   onSelect: (slug: string) => void;
+  activity: ActivityKind;
 }
 
-export default function TaiwanMap({ locations, selected, onSelect }: Props) {
+export default function TaiwanMap({ locations, selected, onSelect, activity }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [vb, setVbState] = useState<ViewBox>(FULL);
   const vbRef = useRef(vb);
@@ -270,7 +271,7 @@ export default function TaiwanMap({ locations, selected, onSelect }: Props) {
       <svg
         ref={svgRef}
         viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
-        className="h-auto w-full max-h-[62vh] touch-none select-none sm:max-h-[70vh]"
+        className="h-auto w-full max-h-[62vh] touch-none select-none sm:max-h-[70vh] xl:max-h-[78vh]"
         role="group"
         aria-label="台灣潛點分布地圖，可捲動縮放與拖曳平移"
         onPointerDown={onPointerDown}
@@ -312,33 +313,52 @@ export default function TaiwanMap({ locations, selected, onSelect }: Props) {
             所以 pin 與文字在任何縮放倍率下都保持固定螢幕大小 */}
         {locations.map((loc) => {
           const { x, y } = markerPos(loc);
-          const c = RATING_HEX[ratingFor(loc.today, primaryActivity(loc.activities))];
+          const supported = supportsActivity(loc.activities, activity);
+          const c = RATING_HEX[ratingFor(loc.today, activity)];
+          // 不支援目前活動的地區：地圖形狀不能少一塊，但要用灰階 + 降低不透明度
+          // 明確標示「這裡沒有這個活動的資料」，而且不能點。
+          const dotFill = supported ? c.base : "#94a3b8";
           const isSel = selected === loc.slug;
           const labelLeft = x > MAP_W - 74;
           const labelBelow = y < 40;
 
           return (
-            <g key={loc.slug} transform={`translate(${x} ${y})`}>
+            <g key={loc.slug} transform={`translate(${x} ${y})`} opacity={supported ? 1 : 0.45}>
               <g
                 transform={`scale(${inv})`}
-                role="button"
-                tabIndex={0}
-                aria-label={`${loc.name}，今日海況${c.label}`}
-                aria-pressed={isSel}
-                className="cursor-pointer outline-none [&:focus-visible_.pin-focus]:opacity-100"
-                onClick={() => activate(loc.slug)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    activate(loc.slug);
-                  }
-                }}
+                role={supported ? "button" : undefined}
+                tabIndex={supported ? 0 : -1}
+                aria-hidden={supported ? undefined : true}
+                aria-label={
+                  supported
+                    ? `${loc.name}，今日${ACTIVITY_KIND_ZH[activity]}海況${c.label}`
+                    : undefined
+                }
+                aria-pressed={supported ? isSel : undefined}
+                className={
+                  supported
+                    ? "cursor-pointer outline-none [&:focus-visible_.pin-focus]:opacity-100"
+                    : "cursor-default outline-none"
+                }
+                onClick={supported ? () => activate(loc.slug) : undefined}
+                onKeyDown={
+                  supported
+                    ? (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          activate(loc.slug);
+                        }
+                      }
+                    : undefined
+                }
               >
                 {/* 觸控命中區 */}
-                <circle cx={0} cy={0} r={20} fill="transparent" />
-                <circle className="pin-focus opacity-0" cx={0} cy={0} r={13} fill="none" stroke="#0284c7" strokeWidth="2" />
+                {supported && <circle cx={0} cy={0} r={20} fill="transparent" />}
+                {supported && (
+                  <circle className="pin-focus opacity-0" cx={0} cy={0} r={13} fill="none" stroke="#0284c7" strokeWidth="2" />
+                )}
 
-                {!isSel && (
+                {supported && !isSel && (
                   <circle
                     cx={0}
                     cy={0}
@@ -349,7 +369,7 @@ export default function TaiwanMap({ locations, selected, onSelect }: Props) {
                   />
                 )}
 
-                <circle cx={0} cy={0} r={isSel ? 8 : 6} fill={c.base} stroke="#fff" strokeWidth={isSel ? 3 : 2} />
+                <circle cx={0} cy={0} r={isSel ? 8 : 6} fill={dotFill} stroke="#fff" strokeWidth={isSel ? 3 : 2} />
 
                 <g
                   transform={`translate(${labelLeft ? -10 : 10}, ${labelBelow ? 14 : -4})`}
@@ -360,7 +380,7 @@ export default function TaiwanMap({ locations, selected, onSelect }: Props) {
                     y={0}
                     className="font-bold"
                     fontSize="11"
-                    fill="#0f172a"
+                    fill={supported ? "#0f172a" : "#94a3b8"}
                     stroke="#fff"
                     strokeWidth="3"
                     paintOrder="stroke"
