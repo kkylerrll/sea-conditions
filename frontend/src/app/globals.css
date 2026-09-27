@@ -36,63 +36,398 @@ body {
   }
 }
 
-/* ============ 首頁滾動敘事：從空氣到深海 ============ */
 
-/* 背景漸層本身就是靠一般文件流畫在 .landing-scene 上，不用 position:fixed，
-   所以就算沒有 JS、--progress 停在預設值 0，這個漸層照樣完整存在——
-   使用者捲到哪，看到的自然就是漸層對應的那一段顏色，不需要 JS 運算顏色。 */
+/* ============ 首頁：五章的捲動短片 ============
+
+   整頁只有一個滿版舞台。捲動不是把內容往上推，而是在章節之間過帶：底圖交叉
+   溶接、文字上浮換頁、左側刻度軸與底部進度條跟著跑。
+
+   全部效果只讀 ScrollScene 寫的單一變數 --progress（0→1），沒有逐幀 JS。每一章
+   自己算出「離目前進度多遠」，再把距離換成透明度與位移：
+
+     --pos   離本章中心的距離，單位是「章」。0 表示正中，±1 表示差一整章。
+     --dist  --pos 的絕對值（CSS 的 abs() 支援度還不夠，用 max(x, -x) 代替）。
+     --vis   底圖用的可見度，換場重疊得比較久（實際數值見下面 .chapter）。
+     --vis2  文字用的可見度，收得比底圖早，所以文字是「換頁」、底圖是「溶接」，
+             這個時間差就是整個效果看起來像影片而不像投影片的原因。
+
+   沒有 JS 或使用者開了 prefers-reduced-motion 時，.progress-armed 不會掛上去，
+   下面所有捲動相關的規則整批不生效，版面自動退回一般的垂直長頁：五章依序堆疊、
+   每張照片配自己的文字、全部可見可讀，不會有任何內容卡在 opacity: 0。 */
+
 .landing-scene {
   --progress: 0;
+  background: #02060d;
+}
+
+/* ---- 1. 捲動軌道與舞台 ---- */
+
+/* 未啟用時就是一般容器；啟用後長度＝章節數 × 一屏，舞台在裡面 sticky 住。 */
+.progress-armed .chapter-track {
+  height: calc(var(--chapters, 5) * 100vh);
+}
+
+.chapter-stage {
+  position: relative;
+}
+.progress-armed .chapter-stage {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* 浮動 CTA 的哨兵：舞台本身不會離開視窗，所以哨兵要獨立掛在軌道的第一屏底部。 */
+.chapter-sentinel {
+  position: absolute;
+  top: 100vh;
+  height: 1px;
+  width: 100%;
+}
+
+/* ---- 2. 章節本身 ---- */
+
+.chapter {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  overflow: hidden;
+  padding: 6rem 1.25rem;
+  --pos: calc(var(--progress, 0) * var(--span, 4) - var(--at, 0));
+  --dist: max(var(--pos), calc(-1 * var(--pos)));
+  /* 底圖：dist 0.25 內全亮，0.75 歸零。兩章之間（各 0.5）剛好各半，是一次乾淨的
+     交叉溶接；窗口再開大就會同時看到三張圖疊在一起，變成一團灰。 */
+  --vis: clamp(0, calc((0.75 - var(--dist)) / 0.5), 1);
+  /* 文字：0.45 就歸零，比底圖早收掉。兩章之間兩邊都是 0，所以文字是「上一段先
+     退乾淨、下一段才進來」，不會出現兩段字疊在一起同時可讀的情況。 */
+  --vis2: clamp(0, calc((0.45 - var(--dist)) / 0.25), 1);
+}
+
+.progress-armed .chapter {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+  padding: 5rem 1.25rem;
+  /* 疊在底下、已經透明的章節不能攔截點擊；ScrollScene 只在跨章時掛 .is-active。 */
+  pointer-events: none;
+}
+.progress-armed .chapter.is-active {
+  pointer-events: auto;
+}
+
+/* ---- 3. 底圖：照片 + 兩層純 CSS 的暗部處理 ---- */
+
+.chapter-media {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+.progress-armed .chapter-media {
+  opacity: var(--vis);
+  /* 換場時微微推近，讓底圖「活著」而不是兩張圖硬疊。位移量刻意很小：
+     大幅視差在滿版照片上很容易變成暈船，小幅度才有電影感。 */
+  transform: scale(calc(1.07 - var(--vis) * 0.05)) translateY(calc(var(--pos) * -2vh));
+  will-change: opacity, transform;
+}
+
+.chapter-media-img {
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+}
+
+/* 由下往上收深：白字壓在照片下半部也讀得到，不需要另外加半透明色塊。
+   28% 那個轉折點刻意壓深一點（0.18 → 0.3）：好幾張照片的上半部是白色浪花，
+   章節編號（00 THE SURFACE 那排小字）剛好落在這個高度，太亮會整排讀不出來。 */
+.chapter-media-scrim {
+  position: absolute;
+  inset: 0;
   background: linear-gradient(
     180deg,
-    #f0f9ff 0%,
-    #dff2ff 5%,
-    #7dd3fc 12%,
-    #38bdf8 19%,
-    #0ea5e9 24%,
-    #075985 29%,
-    #0c4a6e 40%,
-    #082f49 55%,
-    #051224 70%,
-    #030b1a 85%,
-    #020617 100%
+    rgba(2, 6, 13, 0.6) 0%,
+    rgba(2, 6, 13, 0.3) 28%,
+    rgba(2, 6, 13, 0.55) 64%,
+    rgba(2, 6, 13, 0.92) 100%
   );
 }
 
-/* 區塊進場：預設（沒有 .reveal-armed）一律可見，JS 掛上 .reveal-armed 之後
-   才會先隱藏、等 IntersectionObserver 判定進入視窗再淡入。 */
-.reveal-armed [data-reveal] {
-  opacity: 0;
-  transform: translateY(20px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
-}
-.reveal-armed [data-reveal].is-visible {
-  opacity: 1;
-  transform: translateY(0);
+/* 四角壓暗，把視線收回畫面中央。 */
+.chapter-media-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 90% at 50% 45%, transparent 42%, rgba(2, 6, 13, 0.6) 100%);
 }
 
-/* 深度標記（5m/18m/30m）：預設可見，JS 掛上 .progress-armed 之後才改成
-   跟著 --progress 淡入，用 min()/max() 做出「過了某個捲動進度才出現」的效果，
-   不需要 JS 算顏色或位移，純 CSS calc()。 */
-.depth-marker {
-  opacity: 1;
+/* ---- 4. 章節文字 ---- */
+
+.chapter-inner {
+  position: relative;
+  /* 照片 0 → 水體 1 → 文字 2：文字永遠在水前面，不會被微粒或氣泡蓋到。 */
+  z-index: 2;
+  display: flex;
+  max-width: 34rem;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  color: #fff;
 }
-.progress-armed .depth-marker {
-  transition: opacity 0.4s ease;
-}
-.progress-armed .depth-marker[data-at="1"] {
-  opacity: max(0, min(1, calc((var(--progress) - 0.36) / 0.08)));
-}
-.progress-armed .depth-marker[data-at="2"] {
-  opacity: max(0, min(1, calc((var(--progress) - 0.52) / 0.08)));
-}
-.progress-armed .depth-marker[data-at="3"] {
-  opacity: max(0, min(1, calc((var(--progress) - 0.68) / 0.08)));
+.progress-armed .chapter-inner {
+  opacity: var(--vis2);
+  /* 文字往上浮過去，方向跟捲動一致，所以往回捲時也自然是往下退。 */
+  transform: translateY(calc(var(--pos) * 4vh));
+  will-change: opacity, transform;
 }
 
-/* Hero 捲動提示：預設常駐顯示；.progress-armed 時隨捲動快速淡出。 */
+/* 編號 + 英文代號：參考片裡那種「// 02. THE CUT」的章節標頭。 */
+.chapter-index {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: rgba(125, 211, 252, 0.9);
+  /* 這排字很細、字級又小，光靠 scrim 壓暗不夠：碰到白色浪花這種大面積亮部
+     還是會糊掉，額外疊一層貼身的陰影當保險。 */
+  text-shadow: 0 1px 3px rgba(2, 6, 13, 0.9), 0 1px 12px rgba(2, 6, 13, 0.7);
+}
+.chapter-index-num {
+  position: relative;
+  padding-left: 1.75rem;
+}
+.chapter-index-num::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 1.25rem;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.6;
+}
+.chapter-index-en {
+  color: rgba(224, 242, 254, 0.62);
+}
+
+.chapter-kicker {
+  margin-top: 1rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgba(186, 230, 253, 0.9);
+  text-shadow: 0 1px 3px rgba(2, 6, 13, 0.9), 0 1px 12px rgba(2, 6, 13, 0.7);
+}
+
+.chapter-title {
+  margin-top: 0.75rem;
+  font-size: clamp(2rem, 7vw, 3.5rem);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  text-shadow: 0 2px 24px rgba(2, 6, 13, 0.7);
+}
+
+.chapter-body {
+  margin-top: 1rem;
+  max-width: 26rem;
+  font-size: 1rem;
+  line-height: 1.75;
+  color: rgba(226, 240, 254, 0.88);
+  text-shadow: 0 1px 12px rgba(2, 6, 13, 0.75);
+}
+
+.chapter-figure {
+  margin-top: 1.75rem;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.chapter-cta {
+  margin-top: 2rem;
+  display: flex;
+  min-height: 2.75rem;
+  min-width: 11rem;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: #0369a1;
+  padding: 0 1.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  box-shadow: 0 14px 34px -12px rgba(2, 6, 23, 0.9);
+  outline: none;
+  transition: background-color 0.2s ease;
+}
+.chapter-cta:hover {
+  background: #075985;
+}
+.chapter-cta:focus-visible {
+  box-shadow: 0 0 0 2px #02060d, 0 0 0 4px #38bdf8;
+}
+.chapter-cta-light {
+  background: #38bdf8;
+  color: #020617;
+}
+.chapter-cta-light:hover {
+  background: #7dd3fc;
+}
+
+/* ---- 5. 深度計：把捲動條讀成潛水電腦錶 ---- */
+
+.depth-meter {
+  display: none;
+}
+.progress-armed .depth-meter {
+  position: absolute;
+  left: 1.75rem;
+  top: 50%;
+  z-index: 3;
+  display: flex;
+  translate: 0 -50%;
+  flex-direction: column;
+  gap: 1rem;
+  pointer-events: none;
+}
+
+.depth-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  color: #e0f2fe;
+  text-shadow: 0 1px 10px rgba(2, 6, 13, 0.9);
+}
+.depth-value {
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1;
+  /* 等寬數字：深度每幀都在變，比例字寬會讓整個讀數左右抽動 */
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.depth-unit {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(125, 211, 252, 0.9);
+}
+
+.depth-scale {
+  position: relative;
+  height: 40vh;
+  min-height: 13rem;
+  width: 3.5rem;
+}
+.depth-scale-line {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    rgba(224, 242, 254, 0.05),
+    rgba(224, 242, 254, 0.3) 12%,
+    rgba(224, 242, 254, 0.3) 88%,
+    rgba(224, 242, 254, 0.05)
+  );
+}
+
+.depth-tick {
+  position: absolute;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  translate: 0 -50%;
+}
+.depth-tick-mark {
+  height: 1px;
+  width: 0.625rem;
+  background: rgba(224, 242, 254, 0.35);
+}
+.depth-tick-label {
+  font-size: 0.5625rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  font-variant-numeric: tabular-nums;
+  color: rgba(224, 242, 254, 0.4);
+}
+
+/* 目前深度的游標。位置直接是深度的函式，所以它是一路連續滑下去的，
+   不會像章節刻度那樣一格一格跳——這個「連續」本身就是下沉感的一部分。
+   0.45 是水面段的佔比（見 depth.ts 的 SURFACE_PORTION），兩邊必須一致。 */
+.depth-cursor {
+  position: absolute;
+  left: -0.25rem;
+  height: 0.5rem;
+  width: 0.5rem;
+  border-radius: 9999px;
+  background: #38bdf8;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.9);
+  translate: 0 -50%;
+  top: calc(clamp(0, calc((var(--progress, 0) - 0.45) / 0.55), 1) * 100%);
+}
+
+/* ---- 6. 底部進度條：整頁的播放頭 ---- */
+
+.chapter-scrubber {
+  display: none;
+}
+.progress-armed .chapter-scrubber {
+  position: absolute;
+  bottom: 1.5rem;
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  width: min(30rem, calc(100% - 3rem));
+  translate: -50% 0;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.chapter-scrubber-track {
+  height: 2px;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: rgba(224, 242, 254, 0.22);
+}
+.chapter-scrubber-fill {
+  height: 100%;
+  width: calc(var(--progress, 0) * 100%);
+  background: #38bdf8;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.8);
+}
+
+.chapter-scrubber-marks {
+  display: flex;
+  justify-content: space-between;
+}
+.chapter-scrubber-mark {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  font-variant-numeric: tabular-nums;
+  color: rgba(224, 242, 254, 0.35);
+  transition: color 0.35s ease;
+}
+.chapter-scrubber-mark.is-active {
+  color: #38bdf8;
+}
+
+/* ---- 7. 捲動提示：預設常駐；啟用捲動效果後一離開第一章就淡出 ---- */
+
 .scroll-cue {
-  opacity: 1;
+  margin-top: 2.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  color: rgba(224, 242, 254, 0.7);
 }
 .progress-armed .scroll-cue {
   opacity: max(0, min(1, calc(1 - var(--progress) / 0.04)));
@@ -111,25 +446,248 @@ body {
   animation: scroll-cue-bounce 1.8s ease-in-out infinite;
 }
 
+/* ---- 8. 重點卡片：融進場景的玻璃感面板，不是貼在照片上的普通卡片 ---- */
+
+.dive-info-card {
+  position: relative;
+  border-radius: 1.5rem;
+  padding: 1.25rem;
+  width: 100%;
+  max-width: 28rem;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(8, 25, 48, 0.72), rgba(3, 11, 26, 0.88));
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  box-shadow:
+    0 18px 40px -18px rgba(2, 6, 23, 0.8),
+    0 0 34px -10px rgba(56, 189, 248, 0.28);
+  backdrop-filter: blur(6px);
+}
+@media (min-width: 640px) {
+  .dive-info-card {
+    padding: 1.75rem;
+  }
+}
+
+/* ---- 9. 更新頻率小圖上的脈衝 ---- */
+
+.update-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: update-pulse-ring 2.4s ease-out infinite;
+}
+@keyframes update-pulse-ring {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  70%,
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+/* ---- 9b. 水體：貫穿全頁、不隨章節中斷的那一層 ----
+
+   這一層是「持續下沉」和「單純換圖」的分界。五張照片在底下交叉溶接，但水體從
+   頭到尾都不淡出：微粒一路往上飄、光從上方一路減弱、水色一路變深。看的人因此
+   把整頁讀成同一次下潛，照片只是沿途經過的景物。
+
+   兩個輸入都由 ScrollScene 每幀寫出：
+     --progress    0→1，等於深度，決定水色、光量、微粒整體掃過的位移。
+     --scroll-vel  0→1，捲動快慢，決定微粒被拉多長；停手後會自己衰減回 0。
+
+   所有層都掛在章節外面、z-index 介於照片(0)與文字(1)之間，所以水在照片前面、
+   文字在水前面——文字永遠不會被微粒蓋住。 */
+
+.water-column {
+  display: none;
+}
+.progress-armed .water-column {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  overflow: hidden;
+  pointer-events: none;
+  /* 整層的總開關：破水面（0.45，見 depth.ts 的 SURFACE_PORTION）之前完全不存在。
+     水下效果散在四個子層，各自寫一條 ramp 遲早會對不齊，統一收在這裡。 */
+  opacity: clamp(0, calc((var(--progress, 0) - 0.44) / 0.1), 1);
+  /* 游標視差。位移只有幾 px，目的是讓畫面對「有人在看」有反應，不是做 3D。 */
+  translate: calc(var(--pointer-x, 0) * -10px) calc(var(--pointer-y, 0) * -7px);
+}
+
+/* 水面透下來的光：越深越弱，越過中段之後幾乎消失。 */
+.water-surface-glow {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 55vh;
+  background: linear-gradient(
+    180deg,
+    rgba(186, 230, 253, 0.18) 0%,
+    rgba(125, 211, 252, 0.07) 40%,
+    transparent 100%
+  );
+  /* 破水面當下最亮（從水下仰望的水面），越深越弱 */
+  opacity: clamp(0, calc((0.85 - var(--progress, 0)) / 0.3), 1);
+}
+
+/* 光柱：入水後才出現，深水段消失。兩道 ramp 取 min 就是一個「帶狀」的可見區間。 */
+.water-shafts {
+  position: absolute;
+  inset: 0;
+  opacity: clamp(0, calc((0.88 - var(--progress, 0)) / 0.25), 1);
+}
+/* 單道光柱刻意做得很淡：五道疊起來、又各自 blur 之後，亮度是會累加的——
+   照原本 0.22 的透明度，中段整片會糊成一層灰白的霧，把照片的對比吃光。 */
+.water-shaft {
+  position: absolute;
+  top: -20%;
+  height: 150%;
+  background: linear-gradient(180deg, rgba(186, 230, 253, 0.11), transparent 70%);
+  filter: blur(18px);
+  transform: rotate(var(--shaft-rotate));
+  transform-origin: top center;
+  animation: water-shaft-sway var(--shaft-duration) ease-in-out infinite alternate;
+}
+@keyframes water-shaft-sway {
+  from {
+    opacity: 0.45;
+    translate: -1.5% 0;
+  }
+  to {
+    opacity: 0.9;
+    translate: 1.5% 0;
+  }
+}
+
+/* 懸浮微粒。往上飄＝你正在往下沉，這是整頁最強的下沉線索。
+   場高 200vh、起點 -50vh，再跟著 --progress 整體上移 100vh：不論捲到哪裡，
+   視窗永遠落在這塊場中間，微粒不會用完，也不需要 JS 回收重生。 */
+.water-snow-field,
+.water-bubble-field {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -50vh;
+  height: 200vh;
+  /* 入水的淡入已經由 .water-column 的總開關處理，這裡不再重複判斷 */
+}
+.water-snow-field {
+  /* 跟捲動真正連動的地方：捲動本身把整片微粒往上帶過去。 */
+  transform: translate3d(0, calc(var(--progress, 0) * -100vh), 0);
+  will-change: transform;
+}
+
+.water-snow {
+  position: absolute;
+  width: var(--snow-size);
+  height: var(--snow-size);
+  border-radius: 9999px;
+  background: rgba(224, 242, 254, var(--snow-opacity));
+  animation: water-snow-drift var(--snow-duration) linear infinite;
+  animation-delay: var(--snow-delay);
+  /* 捲越快、微粒被拉越長，放手就慢慢縮回圓點。scale 是獨立屬性，不會跟
+     keyframes 用的 transform 打架，所以兩種運動可以疊加而不互相覆蓋。
+     倍率原本是 6（全速拉成 7 倍長），實測看起來像雨滴斜線而不是水中的動態模糊，
+     改成 4.5（全速 5.5 倍長）：還是看得出「被拉長」，但形狀是圓潤的橢圓，不會
+     細成一條線。 */
+  scale: 1 calc(1 + var(--scroll-vel, 0) * 4.5);
+}
+@keyframes water-snow-drift {
+  from {
+    transform: translateY(5vh);
+  }
+  to {
+    transform: translateY(-5vh);
+  }
+}
+
+/* 氣泡：比微粒大、上升快，補一點「有人在這裡呼吸」的生氣。 */
+.water-bubble {
+  position: absolute;
+  bottom: -5%;
+  width: var(--bubble-size);
+  height: var(--bubble-size);
+  border-radius: 9999px;
+  border: 1px solid rgba(224, 242, 254, 0.45);
+  background: radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.55), rgba(224, 242, 254, 0.06));
+  animation: water-bubble-rise var(--bubble-duration) linear infinite;
+  animation-delay: var(--bubble-delay);
+}
+@keyframes water-bubble-rise {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  8% {
+    opacity: 0.85;
+  }
+  92% {
+    opacity: 0.85;
+  }
+  100% {
+    /* 橫向的小偏移讓上升路徑不是一條直線，真實氣泡不會垂直上升 */
+    transform: translate(14px, -190vh);
+    opacity: 0;
+  }
+}
+
+/* 水色：疊在照片之上的連續色偏。五張照片的色溫本來各不相同，這一層把它們
+   收進同一根水柱的色階裡，也是「越深越暗」這件事的主要承載者。 */
+.water-tint {
+  position: absolute;
+  inset: 0;
+  /* 上限刻意留手：照片本身已經被 scrim 和暈影壓過兩次，水色是第三層。三層都吃滿
+     的話深水段的潛水員會整個沒入黑色，深度感是有了，但照片等於白放。偏藍而不是
+     偏黑也是同理——要讀起來像「深水的顏色」，不是像有人把燈關掉。 */
+  background: radial-gradient(130% 85% at 50% 0%, rgba(5, 45, 80, 0.18), rgba(2, 12, 28, 0.58));
+  opacity: clamp(0, calc((var(--progress, 0) - 0.46) / 0.42), 1);
+}
+
+/* ---- 10. 手機：深度計讓位給內容，粒子減量，照片改用 960 寬（見 ChapterMedia） ---- */
+
+@media (max-width: 639px) {
+  /* 深度計會擋到文字，小螢幕直接收掉；深度感這時候主要靠水色與微粒撐。 */
+  .progress-armed .depth-meter {
+    display: none;
+  }
+  /* 粒子數量砍半：中階手機同時跑幾十顆會掉幀，流暢度優先於密度。 */
+  .water-snow:nth-child(2n),
+  .water-bubble:nth-child(2n),
+  .water-shaft:nth-child(n + 4) {
+    display: none;
+  }
+  .chapter-media-img {
+    /* 小螢幕上滿版照片很容易糊掉細節，稍微往中間收一點對比 */
+    filter: saturate(1.05) contrast(1.04);
+  }
+}
+
+/* ---- 11. 首頁深色場景專用的頁尾樣式（見 AppChrome，僅首頁路由套用） ---- */
+
+.landing-footer {
+  border-color: rgba(148, 197, 253, 0.16) !important;
+  color: rgba(186, 230, 253, 0.75) !important;
+}
+
+/* ---- 12. 降低動態效果：整頁退回一般垂直長頁，只留必要的靜態樣式 ---- */
+
 @media (prefers-reduced-motion: reduce) {
-  .reveal-armed [data-reveal] {
-    opacity: 1 !important;
-    transform: none !important;
-    transition: none !important;
-  }
-  .depth-marker,
-  .progress-armed .depth-marker {
-    opacity: 1 !important;
-    transition: none !important;
-  }
-  .scroll-cue,
-  .progress-armed .scroll-cue {
-    opacity: 1 !important;
-  }
-  .scroll-cue-arrow {
+  .scroll-cue-arrow,
+  .update-pulse {
     animation: none !important;
   }
-  .sticky-landing-cta {
+  .sticky-landing-cta,
+  .chapter-cta,
+  .chapter-scrubber-mark {
     transition: none !important;
+  }
+  .scroll-cue {
+    display: none;
+  }
+  /* 水體整層拿掉：它的意義完全來自持續運動，關掉動畫之後只剩一堆靜止的斑點。 */
+  .water-column {
+    display: none !important;
   }
 }

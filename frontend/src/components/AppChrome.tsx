@@ -54,6 +54,31 @@ export default function AppChrome({
   }, [pathname]);
 
   const showActivityToggle = pathname === "/explore" || pathname.startsWith("/spots/");
+  // 首頁是唯一「捲到底部還是深色海底場景」的路由：內容區的背景與頁尾都要換成
+  // 深色版本，才不會在深海場景結束後露出一大塊淺色空白。用路由判斷，不動其他頁。
+  const isLanding = pathname === "/";
+
+  // 首頁不要 Header/Sidebar：整頁滿版捲動敘事本身就是導覽，唯一常駐的導覽是
+  // 頁面自己掛的 StickyLandingCta（fixed 定位、不依賴 Header 的高度或存在）。
+  // 其他路由完全不受影響，兩個元件照常渲染。
+  if (isLanding) {
+    return (
+      <div className="flex min-h-screen flex-col">
+        <div className="min-h-screen bg-[#020617]">
+          {children}
+          {/* 首頁底圖是 CC BY / CC BY-SA 授權的照片，授權條款要求標示作者，
+              所以這一行不能省；完整清單見 public/landing/CREDITS.md。 */}
+          <footer className="landing-footer mx-auto mt-12 max-w-5xl border-t pt-6 text-center text-xs">
+            <p>海況資料僅供參考，下水前請以現場狀況與官方沿岸預報為準。</p>
+            <p className="mt-2 opacity-70">
+              首頁照片：Freddy Sinarahua、Brigitte Bourger、Matthew T Rader、Diego Delso（CC BY-SA 4.0）、
+              jqpubliq（CC BY 2.0），來源 Wikimedia Commons。
+            </p>
+          </footer>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen flex-col">
