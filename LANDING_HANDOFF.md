@@ -11,6 +11,19 @@
   肉眼確認**。
 - 授權標示已補齊（見第四節），不再是缺口。
 
+- 第 12 輪（手電筒＋游動更自然）**已在 `engine.ts`，使用者尚未肉眼確認**：
+  - 手電筒：`flashLight`（SpotLight、不投影、無光束幾何），掛在潛水員位置，
+    `pointermove`（window、passive，非觸控）瞄向游標在 z=`FLASH_PLANE_Z`(-4) 平面上的點，
+    `FLASH_AIM_TAU`=0.15s 平滑；無游標/`hover:none` 時朝前下方緩掃。強度＝
+    `FLASH_MAX_INTENSITY`(140) × smoothstep(darkness, 0.35→0.75)，`FLASH_ANGLE` 0.45、
+    `FLASH_PENUMBRA` 0.6、decay 2、distance 30。材質全是 Standard/Physical，會吃光。
+  - 游動（"straight" 分支）：小型魚衝刺滑行 `SWIM_BURST_AMP`=0.4（週期 2~5s 各自隨機），
+    大型 `SWIM_SLOW_AMP`=0.2；`mixer.timeScale` 隨速度倍率（0.6~1.8）；朝向改為追實際速度向量
+    （y 起伏、z 漂移的解析導數），偏航≤15°/俯仰≤18°，`SWIM_ORIENT_TAU`=0.4s slerp，轉彎 roll
+    ≤17°；`c.dir` 與前進分量不變，不會倒退。鯖魚個體加相位偏移與各自 timeScale。水母未改
+    （模型動畫本身會脈動）。
+  - 若光太亮/太暗先調 `FLASH_MAX_INTENSITY`；若魚擺動太誇張調 `SWIM_*` 常數。
+
 **未結事項**
 1. 使用者肉眼確認第 11 輪（成對魚、倒退游、海龜在淺水）。
 2. 窄螢幕（<1024px）版面、手機降規格（`isMobileSpec()`）、FPS 都沒在實機測過。

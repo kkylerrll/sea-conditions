@@ -149,8 +149,50 @@ const UP = new THREE.Vector3(0, 1, 0);
 // "straight" 分支說明），不是碰 yaw,絕對不會變成「轉身」。
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
 const X_AXIS = new THREE.Vector3(1, 0, 0);
-const STRAIGHT_PITCH_MAX_RAD = THREE.MathUtils.degToRad(8);
 const TURTLE_WOBBLE_RAD = THREE.MathUtils.degToRad(3);
+
+// round 12（游動更自然）：
+// 小型礁魚「衝刺－滑行」：速度倍率 1±SWIM_BURST_AMP，週期每隻隨機 2~5 秒。
+// 大型（海龜／鎚頭鯊／鮟鱇魚）只做緩慢的小幅變速（SWIM_SLOW_AMP,沿用每隻
+// 各自的 speedFreqHz 當頻率）。
+const SWIM_BURST_AMP = 0.4;
+const SWIM_SLOW_AMP = 0.2;
+const SWIM_BURST_PERIOD_MIN = 2;
+const SWIM_BURST_PERIOD_RANGE = 3;
+// 尾鰭動畫速度跟著當下速度倍率走（mixer.timeScale），夾在這個範圍。
+const SWIM_TIMESCALE_MIN = 0.6;
+const SWIM_TIMESCALE_MAX = 1.8;
+// 朝向跟隨「實際速度向量」的平滑時間常數（秒），以及偏航／俯仰上限（rad，
+// 約 15°／18°）；z 方向漂移振幅＝glideSpeed × SWIM_Z_DRIFT_RATIO，讓偏航角
+// 與魚的速度成比例（慢魚不會因為同樣的 z 位移而大幅轉向）。
+const SWIM_ORIENT_TAU = 0.4;
+const SWIM_YAW_MAX_RAD = THREE.MathUtils.degToRad(15);
+const SWIM_PITCH_MAX_RAD = THREE.MathUtils.degToRad(18);
+const SWIM_Z_DRIFT_RATIO = 0.8;
+// 轉彎時的傾斜（roll）：偏航角變化率 × 係數，上限約 17°。
+const SWIM_BANK_GAIN = 1.2;
+const SWIM_BANK_MAX_RAD = THREE.MathUtils.degToRad(17);
+// 鯖魚個體 timeScale 的基準範圍與波動（各自相位，不同步擺尾）。
+const SCHOOL_TIMESCALE_BASE_MIN = 0.85;
+const SCHOOL_TIMESCALE_BASE_RANGE = 0.3;
+const SCHOOL_TIMESCALE_AMP = 0.25;
+
+// round 12：潛水員手電筒。SpotLight 不投影、不畫任何光束幾何（round 2 使用者
+// 拒絕過可見光柱），只是讓材質算光照時多一個方向光源。
+// 強度由 environmentDarkness 在 FLASH_DARK_START~FLASH_DARK_END 之間
+// smoothstep 淡入；decay=2 為物理衰減，FLASH_DISTANCE 以外截斷。
+const FLASH_MAX_INTENSITY = 140;
+const FLASH_ANGLE = 0.45;
+const FLASH_PENUMBRA = 0.6;
+const FLASH_DECAY = 2;
+const FLASH_DISTANCE = 30;
+const FLASH_DARK_START = 0.35;
+const FLASH_DARK_END = 0.75;
+const FLASH_COLOR = 0xfff1d6;
+// 游標對應的目標點落在這個 z 平面（生物車道大約 -1~-8 的中段）。
+const FLASH_PLANE_Z = -4;
+// 目標點指數平滑時間常數（秒）。
+const FLASH_AIM_TAU = 0.15;
 
 // 手機（窄螢幕或粗指標，例如觸控）降規格：devicePixelRatio 上限、實例數量
 // 都減半，跟 globals.css 裡舊版 DOM 粒子的手機降規格是同一個判斷準則延續下來。
@@ -394,6 +436,12 @@ type Creature = {
   // updateCreatures 的 "straight" 分支），這個欄位是每隻各自隨機的波動
   // 頻率（0.3~0.6Hz），同一批魚才不會看起來「同步變速」。
   speedFreqHz: number;
+  // round 12：衝刺－滑行的角頻率（rad/s，週期 2~5 秒）、z 方向漂移的角頻率、
+  // 上一幀偏航角（算 roll 用）、鯖魚 timeScale 基準。
+  burstOmega: number;
+  zFreq: number;
+  prevYaw: number;
+  scaleBase: number;
   // laneCenterX：車道中心點的水平偏移（預設 0＝置中）——round 7 回饋：
   // 鮟鱇魚放大後桌機版會疊在左側固定文字欄上面,讓牠的車道整個偏到畫面
   // 右側（見 spawnCreatures 怎麼算這個值),不是靠「隨機剛好沒疊到」。
@@ -475,12 +523,23 @@ export class DiveEngine {
   // 平光：只剩這兩種，顏色/強度都是深度的連續函數，沒有聚光燈、沒有點光源、
   // 沒有看得見光束本體的平面——見檔案頂端的說明。round 9 加了 sunLight
   // （見下面)，是一般的方向光,不是聚光燈/光束,不違背這條原則。
+  // round 12 另加潛水員手電筒 SpotLight（flashLight）：只照亮材質、無光束幾何,
+  // 使用者已同意（深海太黑的回饋）。
   private ambient: THREE.AmbientLight;
   private hemi: THREE.HemisphereLight;
   // round 9：淺水「陽光從上方灑下來」的柔和方向光,強度隨深度衰減到 0
   // （40m 以下完全沒有，見 update()）。target 也要加進 scene 才會跟著
   // position 一起正確更新 matrixWorld。
   private sunLight: THREE.DirectionalLight;
+  // round 12：潛水員手電筒（SpotLight，不投影、無可見光束幾何），瞄向游標
+  // 在 FLASH_PLANE_Z 平面上的對應點；沒有游標（觸控／尚未移動）時朝前下方
+  // 慢慢掃動。flashAim 是平滑後的目標點，flashPointerNdc 為 null 代表沒游標。
+  private flashLight: THREE.SpotLight;
+  private flashAim = new THREE.Vector3(0, -2, FLASH_PLANE_Z);
+  private flashPointerNdc: THREE.Vector2 | null = null;
+  private flashRay = new THREE.Raycaster();
+  private flashTmp = new THREE.Vector3();
+  private flashHasHover = typeof window !== "undefined" && !window.matchMedia("(hover: none)").matches;
 
   // round 9：淺水漸層背景——用 CanvasTexture 當 scene.background,每幀
   // 用目前深度對應的顏色重畫這張小畫布（見 paintBackgroundGradient()）。
@@ -575,6 +634,12 @@ export class DiveEngine {
     this.sunLight = new THREE.DirectionalLight(0xfff4e0, 0);
     this.scene.add(this.sunLight);
     this.scene.add(this.sunLight.target);
+
+    this.flashLight = new THREE.SpotLight(FLASH_COLOR, 0, FLASH_DISTANCE, FLASH_ANGLE, FLASH_PENUMBRA, FLASH_DECAY);
+    this.flashLight.castShadow = false;
+    this.scene.add(this.flashLight);
+    this.scene.add(this.flashLight.target);
+    if (this.flashHasHover) window.addEventListener("pointermove", this.handlePointerMove, { passive: true });
 
     // round 9：淺水的「陽光藍」漸層背景——用一張小畫布畫垂直漸層當
     // scene.background（Texture），不是固定色。比另外加一個包住攝影機的
@@ -762,6 +827,10 @@ export class DiveEngine {
       xInitialized: false,
       glideSpeed: 1,
       speedFreqHz: 0.3 + Math.random() * 0.3,
+      burstOmega: (Math.PI * 2) / (SWIM_BURST_PERIOD_MIN + Math.random() * SWIM_BURST_PERIOD_RANGE),
+      zFreq: 0.25 + Math.random() * 0.25,
+      prevYaw: 0,
+      scaleBase: SCHOOL_TIMESCALE_BASE_MIN + Math.random() * SCHOOL_TIMESCALE_BASE_RANGE,
       laneWidth: 20,
       laneCenterX: 0,
       laneZ: -4,
@@ -793,6 +862,9 @@ export class DiveEngine {
   // Quaternion——每幀重複使用,不要在 updateCreatures 的迴圈裡新配置物件。
   private pitchQuat = new THREE.Quaternion();
   private wobbleQuat = new THREE.Quaternion();
+  private yawQuat = new THREE.Quaternion();
+  private rollQuat = new THREE.Quaternion();
+  private orientTarget = new THREE.Quaternion();
 
   private loadGltf(path: string): Promise<import("three/examples/jsm/loaders/GLTFLoader.js").GLTF> {
     let p = this.gltfCache.get(path);
@@ -1289,6 +1361,37 @@ export class DiveEngine {
     this.narrowLayout = isNarrowLayout();
   };
 
+  private handlePointerMove = (e: PointerEvent) => {
+    if (e.pointerType === "touch") return;
+    const w = window.innerWidth || 1;
+    const h = window.innerHeight || 1;
+    if (!this.flashPointerNdc) this.flashPointerNdc = new THREE.Vector2();
+    this.flashPointerNdc.set((e.clientX / w) * 2 - 1, -(e.clientY / h) * 2 + 1);
+  };
+
+  /** 手電筒：位置跟著潛水員（略往鏡頭、往上偏，避免光源陷在模型裡），強度隨
+      darkness 淡入，目標點平滑追游標（或無游標時的緩慢掃動）。 */
+  private updateFlashlight(t: number, dt: number, darkness: number, diverX: number, diverY: number, diverZ: number) {
+    const k = THREE.MathUtils.clamp((darkness - FLASH_DARK_START) / (FLASH_DARK_END - FLASH_DARK_START), 0, 1);
+    this.flashLight.intensity = FLASH_MAX_INTENSITY * k * k * (3 - 2 * k);
+    this.flashLight.visible = k > 0.001;
+    if (!this.flashLight.visible) return;
+    this.flashLight.position.set(diverX, diverY + 0.4, diverZ + 0.8);
+
+    const goal = this.flashTmp;
+    if (this.flashPointerNdc) {
+      this.flashRay.setFromCamera(this.flashPointerNdc, this.camera);
+      const r = this.flashRay.ray;
+      const s = r.direction.z !== 0 ? (FLASH_PLANE_Z - r.origin.z) / r.direction.z : 0;
+      goal.copy(r.origin).addScaledVector(r.direction, Math.max(0, s));
+    } else {
+      // 無游標：朝前（-z）偏下，左右慢慢掃動。
+      goal.set(diverX + Math.sin(t * 0.35) * 3, diverY - 2.5 + Math.sin(t * 0.23) * 0.8, FLASH_PLANE_Z);
+    }
+    this.flashAim.lerp(goal, 1 - Math.exp(-dt / FLASH_AIM_TAU));
+    this.flashLight.target.position.copy(this.flashAim);
+  }
+
   start() {
     const tick = () => {
       if (this.disposed) return;
@@ -1518,6 +1621,7 @@ export class DiveEngine {
     this.sunLight.intensity = Math.max(0, 1 - depthM / 40);
     this.sunLight.position.set(this.cameraX, this.cameraY + 20, 10);
     this.sunLight.target.position.set(this.cameraX, this.cameraY - 4, 0);
+    this.updateFlashlight(t, dt, depthFrac, diverX, diverY, 6 - DIVER_DISTANCE);
 
     // ---- 潛水員材質：fresnel 輪廓光的強度隨深度增強（回饋：progress≈1／
     // 深度 1000m 時潛水員幾乎融進近黑背景；round 6 用「整片材質固定 emissive」
@@ -1830,36 +1934,52 @@ export class DiveEngine {
             c.posX = (Math.random() * 2 - 1) * half;
             c.xInitialized = true;
           }
-          // round 11：真魚不是定速巡航——疊一個 ±25% 的 sin 速度波動（頻率
-          // 每隻各自隨機,見 c.speedFreqHz),看起來才不會像「機器人同步游」。
-          const speedMul = 1 + 0.25 * Math.sin(t * c.speedFreqHz + c.phase);
-          c.posX += c.dir * c.glideSpeed * speedMul * dt;
+          // round 12：變速依體型分兩種——小型礁魚「衝刺－滑行」（週期每隻
+          // 2~5 秒、相位各自隨機），大型（海龜／鎚頭鯊／鮟鱇魚）只做緩慢小
+          // 幅變速。方向 c.dir 與前進分量永遠 > 0，所以不可能倒退。
+          const big = c.kind === "turtle" || c.kind === "hammerhead" || c.kind === "anglerfish";
+          const speedMul = big
+            ? 1 + SWIM_SLOW_AMP * Math.sin(t * c.speedFreqHz + c.phase)
+            : 1 + SWIM_BURST_AMP * Math.sin(t * c.burstOmega + c.phase);
+          const vx = c.glideSpeed * speedMul; // 前進速率（>0）
+          c.posX += c.dir * vx * dt;
           if (c.posX > half) c.posX -= half * 2;
           else if (c.posX < -half) c.posX += half * 2;
-          // 垂直方向只留一點點輕微起伏（±0.3 以內),不是繞圈也不是大幅
-          // 擺盪——真正的「待在攝影機視野附近」交給上面的 recyclePosY。
+          // 垂直起伏（±0.3）與 z 方向的緩慢漂移（振幅正比於速度）：兩者的
+          // 解析導數就是速度向量的 y／z 分量，朝向追著這個向量走。
           const bobFreq = 0.6;
           const bobAmp = 0.3;
           const bob = Math.sin(t * bobFreq + c.phase) * bobAmp;
-          c.root.position.set(c.posX + c.laneCenterX, c.posY + bob, c.laneZ);
+          const vy = Math.cos(t * bobFreq + c.phase) * bobAmp * bobFreq;
+          const zAmp = c.glideSpeed * SWIM_Z_DRIFT_RATIO;
+          const zOff = Math.sin(t * c.zFreq + c.phase * 1.7) * zAmp;
+          const vz = Math.cos(t * c.zFreq + c.phase * 1.7) * zAmp * c.zFreq;
+          c.root.position.set(c.posX + c.laneCenterX, c.posY + bob, c.laneZ + zOff);
 
-          // round 11：身體隨垂直速度微微抬頭/低頭（最多 8°，上升抬頭、
-          // 下沉低頭)，疊在固定朝向（quatTarget）之上——繞世界 Z 軸轉,
-          // 完全不碰 yaw,不會變成「轉身」。bob 的瞬時速度就是 cos 波,
-          // 乘 c.dir 讓往左／往右游的魚「抬頭」的轉向一致（見 Z_AXIS 常數
-          // 宣告處的說明）。
-          const vBobNorm = Math.cos(t * bobFreq + c.phase); // 已經正規化到 ±1
-          this.pitchQuat.setFromAxisAngle(Z_AXIS, vBobNorm * STRAIGHT_PITCH_MAX_RAD * c.dir);
-          c.root.quaternion.copy(this.pitchQuat).multiply(c.quatTarget);
-          // round 11：海龜的烘焙動畫幾乎是靜止的（EmptyAction.001），光靠
-          // 上面的抬頭/低頭不夠「活著」——疊一個額外的 roll 搖擺（±3°）。
+          // 目標朝向 = 固定朝向（quatTarget，含 travelYaw）之上疊世界軸旋轉：
+          //   偏航 δ（繞 Y）與俯仰 φ（繞 Z，乘 dir 讓左右游的魚抬頭方向一致）
+          //   由實際速度向量 (vx, vy, vz) 算出並夾在上限內，roll（繞 X）
+          //   依偏航角變化率傾斜。再以 SWIM_ORIENT_TAU 對目前朝向做 slerp。
+          const yaw = THREE.MathUtils.clamp(Math.atan2(-c.dir * vz, vx), -SWIM_YAW_MAX_RAD, SWIM_YAW_MAX_RAD);
+          const pitch = THREE.MathUtils.clamp(Math.atan2(vy, vx), -SWIM_PITCH_MAX_RAD, SWIM_PITCH_MAX_RAD);
+          let bank = 0;
+          if (dt > 1e-4) {
+            bank = THREE.MathUtils.clamp(((yaw - c.prevYaw) / dt) * SWIM_BANK_GAIN * c.dir, -SWIM_BANK_MAX_RAD, SWIM_BANK_MAX_RAD);
+          }
+          c.prevYaw = yaw;
+          this.pitchQuat.setFromAxisAngle(Z_AXIS, pitch * c.dir);
+          this.yawQuat.setFromAxisAngle(UP, yaw);
+          this.rollQuat.setFromAxisAngle(X_AXIS, bank);
+          this.orientTarget.copy(this.yawQuat).multiply(this.pitchQuat).multiply(c.quatTarget);
+          this.orientTarget.premultiply(this.rollQuat);
+          // 海龜的烘焙動畫幾乎靜止，額外疊 roll 搖擺（±3°）。
           if (c.kind === "turtle") {
             this.wobbleQuat.setFromAxisAngle(X_AXIS, Math.sin(t * 0.25 + c.phase) * TURTLE_WOBBLE_RAD);
-            c.root.quaternion.premultiply(this.wobbleQuat);
+            this.orientTarget.premultiply(this.wobbleQuat);
           }
-          // round 11：尾鰭擺動的動畫速度要跟著游動快慢走,不然游快的時候
-          // 尾巴看起來像沒跟上（moonwalking)——clamp 留一點安全邊界。
-          if (c.mixer) c.mixer.timeScale = THREE.MathUtils.clamp(speedMul, 0.6, 1.5);
+          c.root.quaternion.slerp(this.orientTarget, 1 - Math.exp(-dt / SWIM_ORIENT_TAU));
+          // 尾鰭擺動速度跟著當下速度倍率走：衝刺時拍得快、滑行時慢。
+          if (c.mixer) c.mixer.timeScale = THREE.MathUtils.clamp(speedMul, SWIM_TIMESCALE_MIN, SWIM_TIMESCALE_MAX);
           break;
         }
         case "school": {
@@ -1876,11 +1996,16 @@ export class DiveEngine {
           const g = this.groupX.get(c.kind);
           const gx = g ? g.x : 0;
           const bob = Math.sin(t * 0.4 + c.phase) * 0.15;
+          // round 12：隊形偏移加上各自相位的小幅漂移，成員不再同步移動。
           c.root.position.set(
-            gx + c.formationOffset.x,
+            gx + c.formationOffset.x + Math.sin(t * 0.5 + c.phase) * 0.15,
             groupY + c.formationOffset.y + bob,
-            MACKEREL_Z + c.formationOffset.z,
+            MACKEREL_Z + c.formationOffset.z + Math.sin(t * 0.37 + c.phase * 1.3) * 0.1,
           );
+          if (c.mixer) {
+            const ts = c.scaleBase * (1 + SCHOOL_TIMESCALE_AMP * Math.sin(t * 0.9 + c.phase * 2.1));
+            c.mixer.timeScale = THREE.MathUtils.clamp(ts, SWIM_TIMESCALE_MIN, SWIM_TIMESCALE_MAX);
+          }
           break;
         }
         case "drift":
@@ -1969,6 +2094,7 @@ export class DiveEngine {
     if (this.rafId !== null) cancelAnimationFrame(this.rafId);
     this.resizeObserver?.disconnect();
     window.removeEventListener("resize", this.handleResize);
+    window.removeEventListener("pointermove", this.handlePointerMove);
 
     this.scene.traverse((obj) => {
       if (obj instanceof THREE.Mesh || obj instanceof THREE.Points || obj instanceof THREE.Sprite) {
