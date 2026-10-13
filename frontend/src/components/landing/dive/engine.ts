@@ -177,15 +177,18 @@ const SCHOOL_TIMESCALE_BASE_MIN = 0.85;
 const SCHOOL_TIMESCALE_BASE_RANGE = 0.3;
 const SCHOOL_TIMESCALE_AMP = 0.25;
 
-// round 12：潛水員手電筒。SpotLight 不投影、不畫任何光束幾何（round 2 使用者
+// round 12：游標光池（原潛水員手電筒，使用者要求改成「滑鼠滑到哪就亮到哪」）。SpotLight 不投影、不畫任何光束幾何（round 2 使用者
 // 拒絕過可見光柱），只是讓材質算光照時多一個方向光源。
 // 強度由 environmentDarkness 在 FLASH_DARK_START~FLASH_DARK_END 之間
 // smoothstep 淡入；decay=2 為物理衰減，FLASH_DISTANCE 以外截斷。
-const FLASH_MAX_INTENSITY = 140;
-const FLASH_ANGLE = 0.45;
-const FLASH_PENUMBRA = 0.6;
+// 光源放在「鏡頭側、瞄準點前方 FLASH_STANDOFF」處，光池半徑 ≈ tan(angle)×standoff ≈ 3.8。
+// decay=2 時強度 ∝ 距離²：原 140 @ 約 8 單位 → 7 單位約 110。
+const FLASH_MAX_INTENSITY = 110;
+const FLASH_ANGLE = 0.5;
+const FLASH_PENUMBRA = 0.8;
 const FLASH_DECAY = 2;
-const FLASH_DISTANCE = 30;
+const FLASH_STANDOFF = 7;
+const FLASH_DISTANCE = 16;
 const FLASH_DARK_START = 0.35;
 const FLASH_DARK_END = 0.75;
 const FLASH_COLOR = 0xfff1d6;
@@ -531,9 +534,9 @@ export class DiveEngine {
   // （40m 以下完全沒有，見 update()）。target 也要加進 scene 才會跟著
   // position 一起正確更新 matrixWorld。
   private sunLight: THREE.DirectionalLight;
-  // round 12：潛水員手電筒（SpotLight，不投影、無可見光束幾何），瞄向游標
-  // 在 FLASH_PLANE_Z 平面上的對應點；沒有游標（觸控／尚未移動）時朝前下方
-  // 慢慢掃動。flashAim 是平滑後的目標點，flashPointerNdc 為 null 代表沒游標。
+  // round 12：游標光池（SpotLight，不投影、無可見光束幾何），瞄向游標／最後觸控點
+  // 在 FLASH_PLANE_Z 平面上的對應點，光源在鏡頭側；尚無輸入時停在潛水員附近漂移。
+  // flashAim 是平滑後的目標點，flashPointerNdc 為 null 代表沒輸入。
   private flashLight: THREE.SpotLight;
   private flashAim = new THREE.Vector3(0, -2, FLASH_PLANE_Z);
   // 潛水員頭部骨頭（真模型載入後由 findDiverHeadBone 找到並快取）與暫存向量。
@@ -542,7 +545,6 @@ export class DiveEngine {
   private flashPointerNdc: THREE.Vector2 | null = null;
   private flashRay = new THREE.Raycaster();
   private flashTmp = new THREE.Vector3();
-  private flashHasHover = typeof window !== "undefined" && !window.matchMedia("(hover: none)").matches;
 
   // round 9：淺水漸層背景——用 CanvasTexture 當 scene.background,每幀
   // 用目前深度對應的顏色重畫這張小畫布（見 paintBackgroundGradient()）。
@@ -642,7 +644,8 @@ export class DiveEngine {
     this.flashLight.castShadow = false;
     this.scene.add(this.flashLight);
     this.scene.add(this.flashLight.target);
-    if (this.flashHasHover) window.addEventListener("pointermove", this.handlePointerMove, { passive: true });
+    window.addEventListener("pointermove", this.handlePointerMove, { passive: true });
+    window.addEventListener("pointerdown", this.handlePointerMove, { passive: true });
 
     // round 9：淺水的「陽光藍」漸層背景——用一張小畫布畫垂直漸層當
     // scene.background（Texture），不是固定色。比另外加一個包住攝影機的
@@ -1368,14 +1371,13 @@ export class DiveEngine {
   };
 
   private handlePointerMove = (e: PointerEvent) => {
-    if (e.pointerType === "touch") return;
     const w = window.innerWidth || 1;
     const h = window.innerHeight || 1;
     if (!this.flashPointerNdc) this.flashPointerNdc = new THREE.Vector2();
     this.flashPointerNdc.set((e.clientX / w) * 2 - 1, -(e.clientY / h) * 2 + 1);
   };
 
-  /** 潛水員頭部的世界座標（手電筒光源與吐氣氣泡共用）。真模型：讀 head 骨頭
+  /** 潛水員頭部的世界座標（吐氣氣泡用）。真模型：讀 head 骨頭
       （diver.glb 的 "head_016"，排除 head_End 這類末端骨）；沒有骨頭
       （placeholder）時，從 root 原點沿「潛水員自己的頭頂方向」（local +Y 套用
       目前 root 旋轉，俯衝／仰角都會跟著變）偏移約半個身長。 */
@@ -1395,20 +1397,14 @@ export class DiveEngine {
     return out.add(diver.root.position);
   }
 
-  /** 手電筒：位置跟著潛水員（略往鏡頭、往上偏，避免光源陷在模型裡），強度隨
-      darkness 淡入，目標點平滑追游標（或無游標時的緩慢掃動）。 */
+  /** 游標光池：目標點平滑追游標（桌機滑鼠／最後一次觸控點）在 FLASH_PLANE_Z 平面
+      上的對應點；光源放在鏡頭到目標點連線上、離目標點 FLASH_STANDOFF 處。
+      還沒有任何輸入時，光池停在潛水員附近緩慢漂移。強度隨 darkness 淡入。 */
   private updateFlashlight(t: number, dt: number, darkness: number, diverX: number, diverY: number, diverZ: number) {
     const k = THREE.MathUtils.clamp((darkness - FLASH_DARK_START) / (FLASH_DARK_END - FLASH_DARK_START), 0, 1);
     this.flashLight.intensity = FLASH_MAX_INTENSITY * k * k * (3 - 2 * k);
     this.flashLight.visible = k > 0.001;
     if (!this.flashLight.visible) return;
-    // 光源在頭部（骨頭世界座標），再朝目前瞄準點方向前推一小段，像頭燈、
-    // 避免陷在頭部網格裡。光源與 target 都是 scene 的直接子物件，沒有父層
-    // 變換，不會重複套用。
-    const head = this.getDiverHeadWorld(this.headTmp);
-    this.flashLight.position.copy(head);
-    const fwd = this.flashTmp.copy(this.flashAim).sub(head);
-    if (fwd.lengthSq() > 1e-6) this.flashLight.position.addScaledVector(fwd.normalize(), 0.15);
 
     const goal = this.flashTmp;
     if (this.flashPointerNdc) {
@@ -1417,11 +1413,13 @@ export class DiveEngine {
       const s = r.direction.z !== 0 ? (FLASH_PLANE_Z - r.origin.z) / r.direction.z : 0;
       goal.copy(r.origin).addScaledVector(r.direction, Math.max(0, s));
     } else {
-      // 無游標：朝前（-z）偏下，左右慢慢掃動。
-      goal.set(diverX + Math.sin(t * 0.35) * 3, diverY - 2.5 + Math.sin(t * 0.23) * 0.8, FLASH_PLANE_Z);
+      goal.set(diverX + Math.sin(t * 0.35) * 1.2, diverY + Math.sin(t * 0.23) * 0.8, diverZ);
     }
     this.flashAim.lerp(goal, 1 - Math.exp(-dt / FLASH_AIM_TAU));
     this.flashLight.target.position.copy(this.flashAim);
+    // 光源 = 目標點朝鏡頭方向退 FLASH_STANDOFF（位置也隨平滑後的目標點移動）。
+    this.flashTmp.copy(this.camera.position).sub(this.flashAim).normalize();
+    this.flashLight.position.copy(this.flashAim).addScaledVector(this.flashTmp, FLASH_STANDOFF);
   }
 
   start() {
@@ -1593,7 +1591,7 @@ export class DiveEngine {
       this.nextBurstAt -= dt;
       if (this.nextBurstAt <= 0) {
         this.nextBurstAt = 1.4 + Math.random() * 1.2;
-        // 與手電筒共用 getDiverHeadWorld()：真模型讀頭部骨頭，placeholder 則
+        // 吐氣氣泡用 getDiverHeadWorld()：真模型讀頭部骨頭，placeholder 則
         // 沿潛水員自己的頭頂方向偏移，兩者位置一致。
         const head = this.getDiverHeadWorld(this.headTmp);
         this.spawnBubbleBurst(head.x, head.y, head.z + 0.1);
@@ -2128,6 +2126,7 @@ export class DiveEngine {
     this.resizeObserver?.disconnect();
     window.removeEventListener("resize", this.handleResize);
     window.removeEventListener("pointermove", this.handlePointerMove);
+    window.removeEventListener("pointerdown", this.handlePointerMove);
 
     this.scene.traverse((obj) => {
       if (obj instanceof THREE.Mesh || obj instanceof THREE.Points || obj instanceof THREE.Sprite) {
