@@ -536,6 +536,9 @@ export class DiveEngine {
   // 慢慢掃動。flashAim 是平滑後的目標點，flashPointerNdc 為 null 代表沒游標。
   private flashLight: THREE.SpotLight;
   private flashAim = new THREE.Vector3(0, -2, FLASH_PLANE_Z);
+  // 潛水員頭部骨頭（真模型載入後由 findDiverHeadBone 找到並快取）與暫存向量。
+  private diverHeadBone: THREE.Object3D | null = null;
+  private headTmp = new THREE.Vector3();
   private flashPointerNdc: THREE.Vector2 | null = null;
   private flashRay = new THREE.Raycaster();
   private flashTmp = new THREE.Vector3();
@@ -1044,7 +1047,10 @@ export class DiveEngine {
     // 潛水員的實際材質（上面迴圈換掉的 mesh）到這裡才真的接上 this.diver.root
     // ——collectDiverMaterials() 要重新收集一次，不然 update() 每幀還在對著
     // placeholder 的舊材質參照調 emissive，真模型載入後輪廓底線就失效了。
-    if (name === "diver") this.collectDiverMaterials();
+    if (name === "diver") {
+      this.diverHeadBone = null; // 換成真模型後重找頭部骨頭
+      this.collectDiverMaterials();
+    }
   }
 
   /**
@@ -1369,6 +1375,26 @@ export class DiveEngine {
     this.flashPointerNdc.set((e.clientX / w) * 2 - 1, -(e.clientY / h) * 2 + 1);
   };
 
+  /** 潛水員頭部的世界座標（手電筒光源與吐氣氣泡共用）。真模型：讀 head 骨頭
+      （diver.glb 的 "head_016"，排除 head_End 這類末端骨）；沒有骨頭
+      （placeholder）時，從 root 原點沿「潛水員自己的頭頂方向」（local +Y 套用
+      目前 root 旋轉，俯衝／仰角都會跟著變）偏移約半個身長。 */
+  private getDiverHeadWorld(out: THREE.Vector3): THREE.Vector3 {
+    const diver = this.diver;
+    if (!diver) return out.set(0, 0, 0);
+    diver.root.updateMatrixWorld(true);
+    if (!this.diverHeadBone) {
+      diver.root.traverse((o) => {
+        if (!this.diverHeadBone && (o as THREE.Bone).isBone && /^head/i.test(o.name) && !/end/i.test(o.name)) {
+          this.diverHeadBone = o;
+        }
+      });
+    }
+    if (this.diverHeadBone) return this.diverHeadBone.getWorldPosition(out);
+    out.set(0, 0.4, 0).applyQuaternion(diver.root.quaternion);
+    return out.add(diver.root.position);
+  }
+
   /** 手電筒：位置跟著潛水員（略往鏡頭、往上偏，避免光源陷在模型裡），強度隨
       darkness 淡入，目標點平滑追游標（或無游標時的緩慢掃動）。 */
   private updateFlashlight(t: number, dt: number, darkness: number, diverX: number, diverY: number, diverZ: number) {
@@ -1376,7 +1402,13 @@ export class DiveEngine {
     this.flashLight.intensity = FLASH_MAX_INTENSITY * k * k * (3 - 2 * k);
     this.flashLight.visible = k > 0.001;
     if (!this.flashLight.visible) return;
-    this.flashLight.position.set(diverX, diverY + 0.4, diverZ + 0.8);
+    // 光源在頭部（骨頭世界座標），再朝目前瞄準點方向前推一小段，像頭燈、
+    // 避免陷在頭部網格裡。光源與 target 都是 scene 的直接子物件，沒有父層
+    // 變換，不會重複套用。
+    const head = this.getDiverHeadWorld(this.headTmp);
+    this.flashLight.position.copy(head);
+    const fwd = this.flashTmp.copy(this.flashAim).sub(head);
+    if (fwd.lengthSq() > 1e-6) this.flashLight.position.addScaledVector(fwd.normalize(), 0.15);
 
     const goal = this.flashTmp;
     if (this.flashPointerNdc) {
@@ -1561,9 +1593,10 @@ export class DiveEngine {
       this.nextBurstAt -= dt;
       if (this.nextBurstAt <= 0) {
         this.nextBurstAt = 1.4 + Math.random() * 1.2;
-        // 頭部大約在 root 原點往「潛水員自己的上方」偏一點——用目前的 pitch
-        // 概算一個往上的偏移，不需要真的去讀模型骨架。
-        this.spawnBubbleBurst(diverX, diverY + 0.35, 6 - DIVER_DISTANCE + 0.4);
+        // 與手電筒共用 getDiverHeadWorld()：真模型讀頭部骨頭，placeholder 則
+        // 沿潛水員自己的頭頂方向偏移，兩者位置一致。
+        const head = this.getDiverHeadWorld(this.headTmp);
+        this.spawnBubbleBurst(head.x, head.y, head.z + 0.1);
       }
     }
 
