@@ -183,7 +183,7 @@ const SCHOOL_TIMESCALE_AMP = 0.25;
 // smoothstep 淡入；decay=2 為物理衰減，FLASH_DISTANCE 以外截斷。
 // 光源放在「鏡頭側、瞄準點前方 FLASH_STANDOFF」處，光池半徑 ≈ tan(angle)×standoff ≈ 3.8。
 // decay=2 時強度 ∝ 距離²：原 140 @ 約 8 單位 → 7 單位約 110。
-const FLASH_MAX_INTENSITY = 110;
+const FLASH_MAX_INTENSITY = 200; // round 12 回饋「可以再亮一點」：110 → 200
 const FLASH_ANGLE = 0.5;
 const FLASH_PENUMBRA = 0.8;
 const FLASH_DECAY = 2;
