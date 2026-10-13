@@ -1,8 +1,23 @@
-# 首頁改版交接（3D 下潛版，工作區未 commit）
+# 首頁改版交接（3D 下潛版，第 11 輪）
 
-這份是給下一個 session 的交接。工作全部在工作區，**沒有任何 commit**。上一版
-（五張照片交叉溶接）的交接內容已經過時，整份改寫；舊版存檔在 commit
-`d8def41`，需要回頭找舊邏輯可以從那裡挖。
+給下一個 session 的交接。上一版（五張照片交叉溶接）存檔在 commit `d8def41`。
+**閱讀順序：以「目前狀態」「第二節生物分布」「五之二」為準；第二、五節裡與之衝突的舊
+敘述（攝影機落後、環形漂移、固定深度等）已標示作廢。**
+
+## 目前狀態（2026-10-13）
+
+- 全部已 commit 在分支 `landing-3d-dive`（尚未 push、未開 PR）。`tsc`、`npm run build` 通過。
+- 第 11 輪修正（魚兩兩黏在一起、倒退游、海龜深度）**已在程式碼裡，但使用者還沒
+  肉眼確認**。
+- 授權標示已補齊（見第四節），不再是缺口。
+
+**未結事項**
+1. 使用者肉眼確認第 11 輪（成對魚、倒退游、海龜在淺水）。
+2. 窄螢幕（<1024px）版面、手機降規格（`isMobileSpec()`）、FPS 都沒在實機測過。
+3. 深海段沒有連續捲動檢查過是否有空窗。
+4. 往上捲時潛水員頭朝上的姿態，沒有截圖確認過。
+5. `reefClown` 的 mesh 是 3 條魚疊在一起，等幾何拆開才能進正式場景。
+6. 使用者放行後，從 `landing-3d-dive` 開 PR 到 `main`。
 
 ---
 
@@ -87,11 +102,11 @@ progress 0.65 → 1      三次方 easing 對應 40 → 1000m（墜入深海，�
 `dive/engine.ts` 的 `update()` 裡，潛水員的世界座標**不是**直接等於
 `depthToWorldY(depthAt(progress))`。做法：
 
-1. 攝影機的 Y（`this.cameraY`）用指數平滑追著潛水員的真實深度跑，帶一個
-   時間常數（`CAMERA_LAG_TAU`）造成的落後——這個落後就是「生物持續往上
-   流過去」的體感來源，深海暴衝那段相對速度感也是靠它。
+1. 攝影機的 Y（`this.cameraY`）用指數平滑追著潛水員的真實深度跑。（**作廢**：
+   原本的 `CAMERA_LAG_TAU` 秒級落後已在第 3 輪移除，現為 `CAMERA_SMOOTH_TAU`=0.12s，
+   見五之二。）
 2. 潛水員該出現在螢幕高度的哪個比例（`frac`，0＝頂端、1＝底部）是
-   `progress` 的函式（`SCREEN_FRAC_TOP=0.18` → `SCREEN_FRAC_BOTTOM=0.78`，
+   `progress` 的函式（`SCREEN_FRAC_TOP=0.3`（原 0.18）→ `SCREEN_FRAC_BOTTOM=0.78`，
    `smoothstep` 過渡)。
 3. `diverWorldYForFraction()` 用攝影機的垂直視角＋潛水員到攝影機的固定距離
    反推：要讓潛水員出現在某個螢幕高度，他的世界 Y 該是多少。這是精確的
@@ -99,7 +114,7 @@ progress 0.65 → 1      三次方 easing 對應 40 → 1000m（墜入深海，�
    潛水員的真實深度（深海段可以差到 300 多個單位），近似公式會整個垮掉。
 
 好處：潛水員的螢幕位置只取決於 `progress`，跟攝影機的落後動態完全無關，
-不管 `CAMERA_LAG_TAU` 怎麼調，潛水員永遠準確落在該在的高度。
+不管攝影機怎麼平滑，潛水員永遠準確落在該在的高度。
 
 ### 潛水員的朝向：跟捲動方向，不是跟深度
 
@@ -109,23 +124,52 @@ progress 0.65 → 1      三次方 easing 對應 40 → 1000m（墜入深海，�
 往上捲會慢慢轉成上浮姿態，往下捲慢慢轉回下潛姿態，轉換過程是連續的
 （`Math.lerp` 內插 pitch 角度)，不會用 `if` 瞬間切換兩張姿態。
 
-### 生物分布：在捲動進度上均勻分布，不是在公尺數上
+### 生物分布：以捲動進度／真實深度為準（第 11 輪狀態，取代舊區間表）
 
-`spawnInRange(kind, [progressMin, progressMax], count, ...)`——每個生物的
-深度是「隨機挑一個進度值，再用 `depthAt()` 換算成公尺」，不是直接在公尺
-數上取隨機。理由見上面第二輪回饋的第 2 點。各物種的進度區間刻意重疊：
+`spawnInRange(kind, motion, [progressMin, progressMax], count, laneZ)`：每隻生物
+的深度是在進度區間內隨機挑一點，再換算成世界 Y。區間常數在 `dive/engine.ts` 開頭，
+刻意重疊，銜接處兩種同時在畫面上：
 
-```
-REEF_RANGE   [0.02, 0.35]   珊瑚礁魚
-SCHOOL_RANGE [0.25, 0.55]   鯖魚
-DROP_RANGE   [0.45, 0.70]   海龜／鎚頭鯊
-ABYSS_RANGE  [0.62, 1.00]   鮟鱇魚／水母
-```
+| 常數 | 範圍 | 生物 |
+|---|---|---|
+| `REEF_RANGE` | progress 0.02～0.35 | 珊瑚礁魚 reefTang／reefMoorish／reefYellow（桌機各 7 條、手機各 4） |
+| `TURTLE_RANGE` | `progressAt(3)`～`progressAt(25)`（3～25m） | 海龜（桌機 2、手機 1），與礁魚同場；原本 35m+ 不寫實 |
+| `SCHOOL_RANGE` | 0.25～0.55 | 鯖魚群（桌機 32、手機 16） |
+| `DROP_RANGE` | `progressAt(20)`～`progressAt(120)` | 鎚頭鯊（桌機 3、手機 2），對應真實活動深度 20～120m |
+| `JELLY_RANGE` | `progressAt(90)`～1.0 | 水母 |
+| `ANGLER_RANGE` | `progressAt(300)`～1.0 | 鮟鱇魚（桌機 5、手機 3） |
 
-重疊區段會有兩種生物同時在畫面上，銜接處不是硬切。生物本身用世界座標
-固定不動、繞著自己的深度帶做環形漂移（`c.root.position` 用 `Math.cos/sin`
-算），是攝影機在動，不是生物在跟著捲動位移——這樣才會讀成「生物持續被
-經過」而不是「生物自己在飄」。
+**reef-school.glb 拆成四個登記表項目**（`dive/models.ts`）：`reefClown`／`reefTang`／
+`reefMoorish`／`reefYellow` 共用同一個檔案（只 fetch 一次），各用 `reefMeshIndex`
+挑 mesh、`reefKeepPrefix` 只留該 mesh 內的第一條魚（解「兩條魚黏在一起」）。
+`reefClown` 的 mesh 是 3 條小丑魚疊在一起，**不進正式場景的生成名單**
+（`spawnCreatures` 的 `REEF_KINDS` 只有另外三種），登記項目保留，可用
+`?diveDebug=all` 或 `?diveDebug=reefClown` 查看。
+
+**動畫清理**：`sanitizeSwimClip()`（`engine.ts`）對 `sanitizeSwim: true` 的模型
+（reef 四種、mackerel、hammerhead 等）拿掉所有 translation track（原檔把「全身
+移動」錄成局部骨頭平移，會造成倒退／抖動）；`stripRotationMatch`（reef 四種填
+`["head","Spine_01"]`）再額外拿掉名稱比對到的骨頭的 rotation track（那是整條魚
+「轉身」的烘焙位移）。
+
+**朝向**：`travelYaw` 在 reef 四種已回到 0（第 11 輪用 `?diveDebug=all` 量過，
+剩下的 ±25° 是尾部擺動，先前的 `Math.PI/2` 是配合沒清乾淨的轉身動畫調的）。
+anglerfish 是 `Math.PI/2`，其餘 0。
+
+**移動種類**：`MotionKind` 現為 `"straight" | "school" | "drift"`（straight＝沿 X
+軸單向直線、出邊界繞回；school＝鯖魚共用一條漂移路徑＋隊形偏移；drift＝水母原地
+垂直漂浮）。生物位置是世界座標固定，是攝影機在動；**舊版的「繞自己深度帶環形漂移」
+已作廢**。
+
+**近最大深度折返**：捲到底（progress→1）鏡頭速度趨近 0，被 wrap 到視野外的深海
+生物會空等。因此生物在視野外、還沒遠到被 wrap 時，會用
+`SWIM_BACK_SPEED_MIN`（2.5）＋`SWIM_BACK_SPEED_RANGE`（0.5）的速度、並隨剩餘距離
+（`SWIM_BACK_EASE_DISTANCE`=1.2）減速，游回視野內側。回收基準用 `trueDiverY`，
+不用有平滑落後的 `cameraY`。
+
+**除錯**：網址加 `?diveDebug=<物種名>` 只看單一生物，`?diveDebug=all` 把
+`MODEL_REGISTRY` 每一項排成一列、固定速度（`DiveCanvas.tsx` 讀參數，
+`engine.ts` 的 `updateDebugScene`／`setupDebugAllScene`）。
 
 ### 燈光：只剩平光，沒有看得見光束本體的東西
 
@@ -202,14 +246,12 @@ DiveCanvas z-index:0 → dive-scrim z-index:1 → 章節文字 z-index:2 → 深
 `environmentDarkness()`）、`src/components/landing/DepthMeter.tsx`（刻度
 改用 `progressAt()` 換算非線性位置）、`src/components/landing/chapters.tsx`
 （拿掉 `img`/`focus`，英文代號改成 THE SURFACE/REEF/SCHOOL/DROP/ABYSS）、
-`src/components/AppChrome.tsx`（頁尾拿掉照片版權，等模型真的出貨再補模型
-標示）、`public/landing/CREDITS.md`（改記模型出處，目前全部標「尚未出貨
-（替代幾何）」）、`.gitignore`（加 `models/src/`）。
+`src/components/AppChrome.tsx`（頁尾照片版權換成七個模型的作者標示）、`public/landing/CREDITS.md`（改記七個模型的出處）、`.gitignore`（加 `models/src/`）。
 
 ### 刪除
 
 五張照片（`public/landing/*.webp`）、`ChapterMedia.tsx`、`WaterColumn.tsx`、
-`waterColumnField.ts`（DOM 粒子系統，被三.js 的懸浮微粒 `Points` 取代）、
+`waterColumnField.ts`（DOM 粒子系統，後來由 three.js 氣泡 Sprite 取代）、
 六個沒人引用的舊 SVG 場景檔（`SurfHero.tsx`、`WaterlineScene.tsx`、
 `DiveScene.tsx`、`DeepScene.tsx`、`SceneDefs.tsx`、`wave.ts`）——這些都在
 `d8def41` 有備份。
@@ -269,15 +311,11 @@ npx @gltf-transform/cli optimize /tmp/<name>-mr.glb models/<name>.glb \
 | anglerfish.glb | 368K |
 | jellyfish.glb | 300K |
 
-### 授權標示狀態
+### 授權標示狀態（已完成）
 
-`public/landing/CREDITS.md` 目前每個模型都標「尚未出貨（替代幾何）」——
-**這是不對的，模型其實已經整合進場景在用了**，這份文件在這次改版裡沒有
-跟著模型的實際整合狀態更新，下一個 session 要記得把 CREDITS.md 跟
-`AppChrome.tsx` 頁尾改成列出實際使用中的七個模型的作者/授權（全部
-CC BY 4.0，資料都在 `models.ts` 的 `credit` 欄位，直接抄）。**這是本次
-交接已知但沒修的落差，優先度高**——CC BY 4.0 的標示是授權條件，不是可省
-的裝飾。
+`public/landing/CREDITS.md` 與 `AppChrome.tsx` 頁尾都已列出七個模型的作者與授權
+（全部 CC BY 4.0）。**來源以 `dive/models.ts` 的 `MODEL_REGISTRY[*].credit` 為準**；
+新增或更換模型時，三處要一起改。
 
 ---
 
@@ -329,7 +367,7 @@ CC BY 4.0，資料都在 `models.ts` 的 `credit` 欄位，直接抄）。**這�
 
 ---
 
-## 五之二、第三、四輪回饋之後的架構變動（取代前面部分敘述，這裡是最新狀態）
+## 五之二、第三、四輪回饋之後的架構變動（取代部分第二節敘述；生物相關已再被第 11 輪更新）
 
 使用者實測後又回饋了兩輪，改動的地方比較大，上面「二、現在的架構」有些段落
 （尤其是攝影機落後、生物固定深度環繞、懸浮微粒）已經過時，這裡補正：
@@ -347,8 +385,8 @@ CC BY 4.0，資料都在 `models.ts` 的 `credit` 欄位，直接抄）。**這�
    `globals.css` 的 `@media (min-width: 1024px)`，把 `.chapter-inner`
    整個挪到左欄（`margin-left: 7.5rem; width: 34rem`），這個斷點刻意跟
    `isNarrowLayout()` 的 1023px 對齊，兩邊要一起改才對得上。
-3. **生物的移動方式整個重寫，不再是固定角速度繞圈。** 見 `dive/engine.ts`
-   的 `MotionKind`（`glide`／`school`／`solo`／`drift`）：
+3. **生物的移動方式整個重寫，不再是固定角速度繞圈。**（此段的 glide／solo 後來
+   合併成 `straight`，現況見第二節「移動種類」。）見 `dive/engine.ts` 的 `MotionKind`：
    - 海龜／鎚頭鯊／鮟鱇魚是 `glide`——沿 X 軸單向緩慢移動，出邊界
      （`laneWidth`）從另一邊繞回來。
    - 鯖魚是 `school`——所有實例共用同一條用疊加正弦波做出的平滑漂移路徑
@@ -384,13 +422,7 @@ CC BY 4.0，資料都在 `models.ts` 的 `credit` 欄位，直接抄）。**這�
   濃霧、附近生物）會有一瞬間的過渡感——這是預期中的，不是 bug。
 - 深海生物（鮟鱇魚／水母）在截圖裡有實際看到（含發光誘餌），但只驗了
   幾個離散的深度取樣點，沒有逐幀確認整段深海過程都不會有空窗。
-- **生物朝向的逐一校正沒有做**：`orientToVelocity()` 的機制本身（拿速度
-  向量當 lookAt 目標）是通用、正確的做法，但每個模型的 `travelYaw` 目前
-  全部是 0——沒有針對七個模型各自的靜止朝向做「牠是不是在倒退游」的肉眼
-  校正（截圖裡的魚體型太小，看不出精確的頭尾朝向）。如果之後使用者又
-  回報「魚在倒退游」，先查是哪個物種，再去 `models.ts` 幫那個模型的
-  `travelYaw` 加或減 `Math.PI`（180 度）或 `Math.PI/2`（90 度），不用
-  動 `orientToVelocity()` 本身的邏輯。
+- **生物朝向**：第 11 輪已量測校正（見第二節），待使用者肉眼確認；若又回報倒退游，先查物種，再調該模型 `travelYaw`（加減 `Math.PI` 或 `Math.PI/2`），不動 `orientToVelocity()`。
 - 左欄排版跟潛水員置右在 >=1024px 的桌機視窗下用截圖確認過，沒有文字跟
   潛水員／魚群重疊的情況；窄視窗（<1024px）的置中退回邏輯只做了程式碼
   審查，沒有實機/縮視窗驗證（這個環境沒辦法可靠縮視窗，見第一輪交接
@@ -398,16 +430,9 @@ CC BY 4.0，資料都在 `models.ts` 的 `credit` 欄位，直接抄）。**這�
 
 ---
 
-## 六、待辦（優先度由高到低）
+## 六、待辦
 
-1. ~~補回模型授權標示~~——已在這次交接一併修好：`CREDITS.md` 改列七個
-   模型「實際使用中」，`AppChrome.tsx` 頁尾加回一行作者標示。
-2. 找機會用真的手機或縮小的瀏覽器視窗確認手機降規格（`isMobileSpec()`）
-   跟深度計隱藏邏輯。
-3. 拿掉這次為了 debug 而加的任何殘留（目前已經清乾淨，但下次改 `engine.ts`
-   時如果又加了 `window.__dive` 之類的除錯掛勾，記得改完拿掉）。
-4. 有機會的話用真的裝置量一次 FPS，尤其是深海段鮟鱇魚/水母數量比較多、
-   加上珊瑚礁魚/鯖魚可能還沒完全飄出畫面的重疊區間。
+見檔案開頭「目前狀態」的未結事項。另外：改 `engine.ts` 時若加了 `window.__dive` 之類的除錯掛勾，改完要拿掉。
 
 ## 七、怎麼跑
 
