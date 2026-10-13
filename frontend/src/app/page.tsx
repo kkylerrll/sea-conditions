@@ -1,20 +1,27 @@
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import ScrollScene from "@/components/landing/ScrollScene";
 import StickyLandingCta from "@/components/landing/StickyLandingCta";
-import ChapterMedia from "@/components/landing/ChapterMedia";
-import WaterColumn from "@/components/landing/WaterColumn";
 import DepthMeter from "@/components/landing/DepthMeter";
 import { ChapterScrubber } from "@/components/landing/ChapterChrome";
 import { CHAPTERS, CHAPTER_SPAN } from "@/components/landing/chapters";
 import { CoverageInfo, DiveSurfContrastInfo, UpdateRhythmInfo } from "@/components/landing/InfoPoints";
 
-// 首頁＝一支五章的短片。整頁只有一個滿版舞台（sticky），捲動不是把內容往上推，
-// 而是在章節之間過帶：底圖交叉溶接、文字上浮換頁、左側刻度軸與底部進度條跟著走。
+// 三.js 場景整支動態載入、關掉 SSR：建構子會摸 window/WebGL，伺服器端執行會
+// 直接炸掉；動態載入也讓這包最重的 JS 跟五章文字（下面全是 server component）
+// 分開成不同的 chunk，文字的首次繪製不需要等它。詳細降級路徑見 DiveCanvas.tsx。
+const DiveCanvas = dynamic(() => import("@/components/landing/DiveCanvas"), { ssr: false });
+
+// 首頁＝一次持續的下潛。整頁只有一個滿版舞台（sticky），捲動不是把內容往上推，
+// 而是把同一個潛水員往下推：三.js 場景從頭到尾連續運作（一個潛水員、隨深度
+// 出現的生物、隨深度變化的光線與濃霧），只有章節文字會交叉淡出淡入——這正是
+// 「持續下潛」跟「單純換圖」的差別，也是這一版重做的整個理由。
 //
-// 這個檔案是 server component，五章的文字在初次 HTML 就全部渲染出來。捲動效果
-// 完全由 CSS 讀 ScrollScene 寫的單一 --progress 變數驅動，JS 沒跑或使用者關掉動態
-// 效果時，.progress-armed 不存在，整頁自動退回一般的垂直長頁：五章依序堆疊、
-// 每張照片配自己的文字、全部可見可讀，不會有任何內容卡在 opacity: 0。
+// 這個檔案是 server component，五章的文字在初次 HTML 就全部渲染出來。文字的
+// 交叉淡出完全由 CSS 讀 ScrollScene 寫的單一 --progress 變數驅動；JS 沒跑或
+// 使用者關掉動態效果時，.progress-armed 不存在，整頁自動退回一般的垂直長頁：
+// 五章依序堆疊、全部可見可讀，背景是純 CSS 的深水漸層，不會有任何內容卡在
+// opacity: 0，也不會出現空白的 3D 畫布。
 export default function HomePage() {
   return (
     <ScrollScene>
@@ -76,9 +83,11 @@ export default function HomePage() {
             </Link>
           </Chapter>
 
-          {/* 水體與深度計都掛在章節外面：章節會交叉溶接，這兩者不會——這正是整頁
-              讀起來像一次連續下潛、而不是五張輪播圖的原因。 */}
-          <WaterColumn />
+          {/* 3D 場景掛在章節外面、z-index 最底層：章節文字會交叉淡出淡入，
+              場景本身從頭到尾不中斷——這正是整頁讀起來像一次連續下潛、而不是
+              五張輪播圖的原因。scrim 是給文字墊底的暗化漸層，同樣不隨章節切換。 */}
+          <DiveCanvas />
+          <div className="dive-scrim" aria-hidden="true" />
           <DepthMeter />
           <ChapterScrubber />
         </div>
@@ -87,9 +96,10 @@ export default function HomePage() {
   );
 }
 
-// 單一章節的外框：--at 同時餵給 CSS 算「離目前進度多遠」（--pos / --vis），
+// 單一章節的外框：--at 同時餵給 CSS 算「離目前進度多遠」（--pos / --vis2），
 // data-chapter-at 則讓 ScrollScene 在切章時掛上 .is-active——只有作用中的章節
-// 吃得到滑鼠事件，底下疊著的其他四章不會攔截到 CTA 的點擊。
+// 吃得到滑鼠事件，底下疊著的其他四章不會攔截到 CTA 的點擊。這一版章節底下
+// 沒有照片了（3D 場景在章節外面、從頭到尾不中斷），.chapter 本身只剩文字。
 function Chapter({ at, children }: { at: number; children: React.ReactNode }) {
   return (
     <section
@@ -97,7 +107,6 @@ function Chapter({ at, children }: { at: number; children: React.ReactNode }) {
       style={{ "--at": at } as React.CSSProperties}
       className={`chapter${at === 0 ? " is-active" : ""}`}
     >
-      <ChapterMedia at={at} />
       <div className="chapter-inner">
         <p className="chapter-index" aria-hidden="true">
           <span className="chapter-index-num">{CHAPTERS[at].num}</span>

@@ -37,27 +37,54 @@ body {
 }
 
 
-/* ============ 首頁：五章的捲動短片 ============
+/* ============ 首頁：一次持續下潛的 3D 場景 ============
 
-   整頁只有一個滿版舞台。捲動不是把內容往上推，而是在章節之間過帶：底圖交叉
-   溶接、文字上浮換頁、左側刻度軸與底部進度條跟著跑。
+   整頁只有一個滿版舞台。捲動不是把內容往上推，而是把同一個潛水員往下推：
+   三.js 場景（DiveCanvas，見 dive/engine.ts）從頭到尾連續運作，只有五章的
+   文字會交叉淡出淡入。這一版跟上一版最大的差別：底圖不再是五張各自的照片，
+   換照片＝換場景這件事已經不存在，深度是連續的，敘事也是連續的。
 
-   全部效果只讀 ScrollScene 寫的單一變數 --progress（0→1），沒有逐幀 JS。每一章
-   自己算出「離目前進度多遠」，再把距離換成透明度與位移：
+   文字效果只讀 ScrollScene 寫的單一變數 --progress（0→1），沒有逐幀 JS。
+   每一章自己算出「離目前進度多遠」，再把距離換成文字的透明度與位移：
 
-     --pos   離本章中心的距離，單位是「章」。0 表示正中，±1 表示差一整章。
-     --dist  --pos 的絕對值（CSS 的 abs() 支援度還不夠，用 max(x, -x) 代替）。
-     --vis   底圖用的可見度，換場重疊得比較久（實際數值見下面 .chapter）。
-     --vis2  文字用的可見度，收得比底圖早，所以文字是「換頁」、底圖是「溶接」，
-             這個時間差就是整個效果看起來像影片而不像投影片的原因。
+     --pos    離本章中心的距離，單位是「章」。0 表示正中，±1 表示差一整章。
+     --dist   --pos 的絕對值（CSS 的 abs() 支援度還不夠，用 max(x, -x) 代替）。
+     --vis2   文字的可見度：兩章之間會先歸零再進下一段，不會有兩段字同時
+              可讀疊在一起的情況。
+
+   三.js 場景讀的是另一份資料：diveState.progress / diveState.velocity（見
+   diveState.ts），跟 CSS 變數同步但走的是 JS 物件，不是 CSS custom property——
+   三.js 的渲染迴圈是自己的 rAF，讀 CSS 變數還要再解析字串，不如直接讀數字。
 
    沒有 JS 或使用者開了 prefers-reduced-motion 時，.progress-armed 不會掛上去，
-   下面所有捲動相關的規則整批不生效，版面自動退回一般的垂直長頁：五章依序堆疊、
-   每張照片配自己的文字、全部可見可讀，不會有任何內容卡在 opacity: 0。 */
+   下面所有捲動相關的規則整批不生效，DiveCanvas 也不會建立 WebGL context（見
+   該檔），版面自動退回一般的垂直長頁：五章依序堆疊、全部可見可讀，背景是
+   純 CSS 的深水漸層，不會有任何內容卡在 opacity: 0，也不會有空白的畫布。 */
 
 .landing-scene {
   --progress: 0;
-  background: #02060d;
+  /* 退回長頁時也要有「深水」的視覺——一路往下越深越暗的靜態漸層，不需要
+     JS。round 9：改用跟 dive/engine.ts 的 DEPTH_GRADIENT_STOPS 同一份
+     0m→1000m 陽光藍色票（那邊是「上／下兩色」隨深度插值的動態漸層，這裡
+     是沒有 JS 時的單一靜態漸層，取每個深度點「上下兩色各半」的中間色，
+     跟 engine.ts update() 算 fog 顏色用的 gradMid 是同一個邏輯）——兩種
+     模式看起來才是同一套設計，不是退化版自己另外配一套顏色。
+     色標的百分比位置不是平均分布，是用 depth.ts 的 progressAt(depthM)
+     換算出來的（跟捲動曲線同一條公式）：0～40m 對應 0～65%、40～1000m
+     用三次方 easing 擠進剩下的 35%——深的地方色標間距本來就比較密集
+     （DEPTH_GRADIENT_STOPS 選的深度點本身是疏密不均的 0/5/10/20/40/
+     100/300/1000），換算成百分比之後間距自然也不均,不需要另外手調。 */
+  background: linear-gradient(
+    180deg,
+    #4dc2e8 0%,
+    #32b0de 8.13%,
+    #1c98d3 16.25%,
+    #1175b5 32.5%,
+    #0a4d85 65%,
+    #052e53 78.89%,
+    #031428 87.65%,
+    #02060d 100%
+  );
 }
 
 /* ---- 1. 捲動軌道與舞台 ---- */
@@ -96,11 +123,9 @@ body {
   padding: 6rem 1.25rem;
   --pos: calc(var(--progress, 0) * var(--span, 4) - var(--at, 0));
   --dist: max(var(--pos), calc(-1 * var(--pos)));
-  /* 底圖：dist 0.25 內全亮，0.75 歸零。兩章之間（各 0.5）剛好各半，是一次乾淨的
-     交叉溶接；窗口再開大就會同時看到三張圖疊在一起，變成一團灰。 */
-  --vis: clamp(0, calc((0.75 - var(--dist)) / 0.5), 1);
-  /* 文字：0.45 就歸零，比底圖早收掉。兩章之間兩邊都是 0，所以文字是「上一段先
-     退乾淨、下一段才進來」，不會出現兩段字疊在一起同時可讀的情況。 */
+  /* 文字：0.45 就歸零。兩章之間兩邊都是 0，所以文字是「上一段先退乾淨、
+     下一段才進來」，不會出現兩段字疊在一起同時可讀的情況。底下已經沒有
+     照片要溶接了（3D 場景是連續的），只剩這一條可見度曲線要管。 */
   --vis2: clamp(0, calc((0.45 - var(--dist)) / 0.25), 1);
 }
 
@@ -116,47 +141,75 @@ body {
   pointer-events: auto;
 }
 
-/* ---- 3. 底圖：照片 + 兩層純 CSS 的暗部處理 ---- */
+/* ---- 3. 3D 場景與文字墊底的暗化層 ----
 
-.chapter-media {
+   dive-canvas 是三.js 的畫布，掛在 .chapter-stage 底下、章節外面（見 page.tsx）：
+   一個潛水員、隨深度出現的生物、隨深度變化的光線與濃霧，從頭到尾連續運作，
+   不隨章節切換。沒有 JS／WebGL 失敗／reduced-motion 時 DiveCanvas 不會建立
+   渲染器，畫布維持空白，底下 .landing-scene 的靜態深水漸層會透出來——這就是
+   為什麼 canvas 本身要 background: transparent，而不是自己再畫一層底色。
+
+   dive-scrim 是文字的暗化墊底：3D 場景的顏色是連續漸變的，不像照片那樣可以
+   針對每一章調整對比，所以額外疊一層固定的漸層保證文字在任何深度都讀得到。
+
+   第三輪回饋：魚群游過文字正中央會蓋掉字，讀性受影響。潛水員本身已經在
+   引擎那邊挪到畫面右側（見 dive/engine.ts 的 SCREEN_FRAC_X），但自由游動
+   的魚群還是會不時穿過正中央的文字欄——這裡不追殺 3D 空間裡的座標去閃避
+   文字（生物的世界座標跟螢幕上文字欄的對應關係會隨深度/視角變動，做不到
+   精準閃避），改成在文字欄的位置疊一塊固定的暗化，魚游過那塊區域自然被
+   壓暗，字不會被完全蓋住。
+
+   round 9 回饋：桌機（>=1024px）文字欄後來改到左半邊（見下面 1024px
+   那條 media query），但這裡原本的暗化還是「畫面正中央」一個置中的
+   radial-gradient——兩個位置對不上，變成畫面中央有一塊跟文字欄無關的
+   暗斑,疊加corner vignette／上下兩條 band 之後,原本該通透漂亮的陽光藍
+   淺水看起來髒髒的、很「muddy」。改成：
+     - 置中的 radial-gradient 只在窄螢幕（<1024px,文字也退回置中）用;
+     - >=1024px 換成貼著左側文字欄的 linear-gradient,暗化範圍跟文字欄
+       對齊,不會在正中央留一塊無意義的暗斑;
+     - 拿掉四角 vignette（120% 70% 那條 radial)——那是「收攏視線」的
+       裝飾,不是讀性需要的東西,拿掉之後淺水的顏色才透得出來;
+     - 原本上下各一條的 linear-gradient band 合併成只留底部一條、強度
+       壓到 0.3 以內,只為了襯托底部深度計／scrubber 的可讀性,不是整張
+       畫面的暗角。 */
+
+.dive-canvas {
   position: absolute;
   inset: 0;
   z-index: 0;
-}
-.progress-armed .chapter-media {
-  opacity: var(--vis);
-  /* 換場時微微推近，讓底圖「活著」而不是兩張圖硬疊。位移量刻意很小：
-     大幅視差在滿版照片上很容易變成暈船，小幅度才有電影感。 */
-  transform: scale(calc(1.07 - var(--vis) * 0.05)) translateY(calc(var(--pos) * -2vh));
-  will-change: opacity, transform;
-}
-
-.chapter-media-img {
-  height: 100%;
+  display: block;
   width: 100%;
-  object-fit: cover;
+  height: 100%;
+  background: transparent;
 }
 
-/* 由下往上收深：白字壓在照片下半部也讀得到，不需要另外加半透明色塊。
-   28% 那個轉折點刻意壓深一點（0.18 → 0.3）：好幾張照片的上半部是白色浪花，
-   章節編號（00 THE SURFACE 那排小字）剛好落在這個高度，太亮會整排讀不出來。 */
-.chapter-media-scrim {
+.dive-scrim {
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(2, 6, 13, 0.6) 0%,
-    rgba(2, 6, 13, 0.3) 28%,
-    rgba(2, 6, 13, 0.55) 64%,
-    rgba(2, 6, 13, 0.92) 100%
-  );
+  z-index: 1;
+  /* 窄螢幕（<1024px）版：文字退回置中（見下面 1024px 的 media query），
+     暗化也置中。>=1024px 會被下面那條規則整個換掉。 */
+  background:
+    radial-gradient(46% 50% at 50% 42%, rgba(2, 6, 13, 0.5) 0%, rgba(2, 6, 13, 0.28) 55%, transparent 100%),
+    /* 底部一條淡淡的暗化，只為了襯托深度計／scrubber 的可讀性，強度壓低
+       （max 0.3），不是整張畫面的暗角。 */
+    linear-gradient(180deg, transparent 0%, transparent 75%, rgba(2, 6, 13, 0.3) 100%);
 }
 
-/* 四角壓暗，把視線收回畫面中央。 */
-.chapter-media-vignette {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(120% 90% at 50% 45%, transparent 42%, rgba(2, 6, 13, 0.6) 100%);
+@media (min-width: 1024px) {
+  .dive-scrim {
+    /* 文字欄在左半邊（見下面 .chapter-inner 的 margin-left/width），暗化
+       跟著貼到左側——只壓文字欄那一塊，不是整張畫面置中的暗斑。
+       round 10 回饋：用近黑色（rgba(2,6,13,…)）疊在陽光藍的淺水上,左邊
+       40% 看起來灰灰濁濁的,跟右邊乾淨的藍對不起來——近黑色沒有「色相」,
+       疊上去等於直接把底色的彩度往下拉,跟整頁「通透陽光藍」的調性衝突。
+       換成跟水色同一個色系的深海藍（海軍藍,0328 4e 附近),暗化文字欄的
+       同時還是「藍」,不會讀成一塊髒灰色,停止點（0%/32%/50%）跟原本
+       一樣沒有變,只換顏色。 */
+    background:
+      linear-gradient(90deg, rgba(3, 40, 78, 0.38) 0%, rgba(3, 40, 78, 0.18) 32%, transparent 50%),
+      linear-gradient(180deg, transparent 0%, transparent 75%, rgba(2, 6, 13, 0.3) 100%);
+  }
 }
 
 /* ---- 4. 章節文字 ---- */
@@ -177,6 +230,36 @@ body {
   /* 文字往上浮過去，方向跟捲動一致，所以往回捲時也自然是往下退。 */
   transform: translateY(calc(var(--pos) * 4vh));
   will-change: opacity, transform;
+}
+
+/* 第三輪回饋：置中的文字欄跟置中的潛水員必然互相疊在一起。桌機（>=1024px）
+   夠寬，把文字欄整個挪到左半邊（從深度計右邊開始），潛水員固定在畫面右側
+   （見 dive/engine.ts 的 SCREEN_FRAC_X），兩者從結構上就不會再疊到——不用
+   再靠暗化墊底去補救讀不到字的問題。窄螢幕（平板直式、手機）沒有這麼多
+   水平空間分兩欄，文字退回置中，潛水員也跟著置中（那時候讀性交給
+   .dive-scrim 的暗化墊底）。這條規則刻意不 scope 在 .progress-armed 底下：
+   沒有 JS 的退化版一樣適用左欄排版，兩種模式看起來才會像同一個設計。 */
+@media (min-width: 1024px) {
+  .chapter {
+    justify-items: start;
+  }
+  .chapter-inner {
+    align-items: flex-start;
+    text-align: left;
+    /* 7.5rem 讓文字欄的左緣清楚落在深度計（left:1.75rem + 刻度尺寬度）右邊，
+       兩者不會疊在一起。固定寬度（不只是 max-width）是因為 .chapter 改成
+       justify-items:start 之後，格線項目預設會縮成內容寬度——不同章節的
+       標題長短不一，縮寬的話每章文字欄寬度會跳動，欄寬要固定才看起來像
+       同一欄。 */
+    margin-left: 7.5rem;
+    width: 34rem;
+  }
+  .scroll-cue {
+    align-items: flex-start;
+  }
+  .chapter-figure {
+    justify-content: flex-start;
+  }
 }
 
 /* 編號 + 英文代號：參考片裡那種「// 02. THE CUT」的章節標頭。 */
@@ -356,9 +439,12 @@ body {
   color: rgba(224, 242, 254, 0.4);
 }
 
-/* 目前深度的游標。位置直接是深度的函式，所以它是一路連續滑下去的，
-   不會像章節刻度那樣一格一格跳——這個「連續」本身就是下沉感的一部分。
-   0.45 是水面段的佔比（見 depth.ts 的 SURFACE_PORTION），兩邊必須一致。 */
+/* 目前深度的游標。位置直接等於 --progress，是捲動量的線性讀數，跟深度
+   刻度（DEPTH_TICKS，用 progressAt() 換算成非線性位置）是兩件事：游標本身
+   一路等速滑下去，刻度才是越往下越擠——擠起來的刻度＋等速的游標，看起來
+   就是游標「衝過」越來越密的刻度，正好呼應深度數字最後暴衝的敘事。
+   舊版這裡有一段 SURFACE_PORTION 的偏移公式，這一版場景一開始就在水下，
+   不再有水面段，已經拿掉（另一處在 depth.ts，兩邊一起拿掉才對得齊）。 */
 .depth-cursor {
   position: absolute;
   left: -0.25rem;
@@ -368,7 +454,7 @@ body {
   background: #38bdf8;
   box-shadow: 0 0 10px rgba(56, 189, 248, 0.9);
   translate: 0 -50%;
-  top: calc(clamp(0, calc((var(--progress, 0) - 0.45) / 0.55), 1) * 100%);
+  top: calc(var(--progress, 0) * 100%);
 }
 
 /* ---- 6. 底部進度條：整頁的播放頭 ---- */
@@ -487,180 +573,18 @@ body {
   }
 }
 
-/* ---- 9b. 水體：貫穿全頁、不隨章節中斷的那一層 ----
+/* ---- 10. 手機：深度計讓位給內容 ----
 
-   這一層是「持續下沉」和「單純換圖」的分界。五張照片在底下交叉溶接，但水體從
-   頭到尾都不淡出：微粒一路往上飄、光從上方一路減弱、水色一路變深。看的人因此
-   把整頁讀成同一次下潛，照片只是沿途經過的景物。
-
-   兩個輸入都由 ScrollScene 每幀寫出：
-     --progress    0→1，等於深度，決定水色、光量、微粒整體掃過的位移。
-     --scroll-vel  0→1，捲動快慢，決定微粒被拉多長；停手後會自己衰減回 0。
-
-   所有層都掛在章節外面、z-index 介於照片(0)與文字(1)之間，所以水在照片前面、
-   文字在水前面——文字永遠不會被微粒蓋住。 */
-
-.water-column {
-  display: none;
-}
-.progress-armed .water-column {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  display: block;
-  overflow: hidden;
-  pointer-events: none;
-  /* 整層的總開關：破水面（0.45，見 depth.ts 的 SURFACE_PORTION）之前完全不存在。
-     水下效果散在四個子層，各自寫一條 ramp 遲早會對不齊，統一收在這裡。 */
-  opacity: clamp(0, calc((var(--progress, 0) - 0.44) / 0.1), 1);
-  /* 游標視差。位移只有幾 px，目的是讓畫面對「有人在看」有反應，不是做 3D。 */
-  translate: calc(var(--pointer-x, 0) * -10px) calc(var(--pointer-y, 0) * -7px);
-}
-
-/* 水面透下來的光：越深越弱，越過中段之後幾乎消失。 */
-.water-surface-glow {
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 55vh;
-  background: linear-gradient(
-    180deg,
-    rgba(186, 230, 253, 0.18) 0%,
-    rgba(125, 211, 252, 0.07) 40%,
-    transparent 100%
-  );
-  /* 破水面當下最亮（從水下仰望的水面），越深越弱 */
-  opacity: clamp(0, calc((0.85 - var(--progress, 0)) / 0.3), 1);
-}
-
-/* 光柱：入水後才出現，深水段消失。兩道 ramp 取 min 就是一個「帶狀」的可見區間。 */
-.water-shafts {
-  position: absolute;
-  inset: 0;
-  opacity: clamp(0, calc((0.88 - var(--progress, 0)) / 0.25), 1);
-}
-/* 單道光柱刻意做得很淡：五道疊起來、又各自 blur 之後，亮度是會累加的——
-   照原本 0.22 的透明度，中段整片會糊成一層灰白的霧，把照片的對比吃光。 */
-.water-shaft {
-  position: absolute;
-  top: -20%;
-  height: 150%;
-  background: linear-gradient(180deg, rgba(186, 230, 253, 0.11), transparent 70%);
-  filter: blur(18px);
-  transform: rotate(var(--shaft-rotate));
-  transform-origin: top center;
-  animation: water-shaft-sway var(--shaft-duration) ease-in-out infinite alternate;
-}
-@keyframes water-shaft-sway {
-  from {
-    opacity: 0.45;
-    translate: -1.5% 0;
-  }
-  to {
-    opacity: 0.9;
-    translate: 1.5% 0;
-  }
-}
-
-/* 懸浮微粒。往上飄＝你正在往下沉，這是整頁最強的下沉線索。
-   場高 200vh、起點 -50vh，再跟著 --progress 整體上移 100vh：不論捲到哪裡，
-   視窗永遠落在這塊場中間，微粒不會用完，也不需要 JS 回收重生。 */
-.water-snow-field,
-.water-bubble-field {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: -50vh;
-  height: 200vh;
-  /* 入水的淡入已經由 .water-column 的總開關處理，這裡不再重複判斷 */
-}
-.water-snow-field {
-  /* 跟捲動真正連動的地方：捲動本身把整片微粒往上帶過去。 */
-  transform: translate3d(0, calc(var(--progress, 0) * -100vh), 0);
-  will-change: transform;
-}
-
-.water-snow {
-  position: absolute;
-  width: var(--snow-size);
-  height: var(--snow-size);
-  border-radius: 9999px;
-  background: rgba(224, 242, 254, var(--snow-opacity));
-  animation: water-snow-drift var(--snow-duration) linear infinite;
-  animation-delay: var(--snow-delay);
-  /* 捲越快、微粒被拉越長，放手就慢慢縮回圓點。scale 是獨立屬性，不會跟
-     keyframes 用的 transform 打架，所以兩種運動可以疊加而不互相覆蓋。
-     倍率原本是 6（全速拉成 7 倍長），實測看起來像雨滴斜線而不是水中的動態模糊，
-     改成 4.5（全速 5.5 倍長）：還是看得出「被拉長」，但形狀是圓潤的橢圓，不會
-     細成一條線。 */
-  scale: 1 calc(1 + var(--scroll-vel, 0) * 4.5);
-}
-@keyframes water-snow-drift {
-  from {
-    transform: translateY(5vh);
-  }
-  to {
-    transform: translateY(-5vh);
-  }
-}
-
-/* 氣泡：比微粒大、上升快，補一點「有人在這裡呼吸」的生氣。 */
-.water-bubble {
-  position: absolute;
-  bottom: -5%;
-  width: var(--bubble-size);
-  height: var(--bubble-size);
-  border-radius: 9999px;
-  border: 1px solid rgba(224, 242, 254, 0.45);
-  background: radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.55), rgba(224, 242, 254, 0.06));
-  animation: water-bubble-rise var(--bubble-duration) linear infinite;
-  animation-delay: var(--bubble-delay);
-}
-@keyframes water-bubble-rise {
-  0% {
-    transform: translate(0, 0);
-    opacity: 0;
-  }
-  8% {
-    opacity: 0.85;
-  }
-  92% {
-    opacity: 0.85;
-  }
-  100% {
-    /* 橫向的小偏移讓上升路徑不是一條直線，真實氣泡不會垂直上升 */
-    transform: translate(14px, -190vh);
-    opacity: 0;
-  }
-}
-
-/* 水色：疊在照片之上的連續色偏。五張照片的色溫本來各不相同，這一層把它們
-   收進同一根水柱的色階裡，也是「越深越暗」這件事的主要承載者。 */
-.water-tint {
-  position: absolute;
-  inset: 0;
-  /* 上限刻意留手：照片本身已經被 scrim 和暈影壓過兩次，水色是第三層。三層都吃滿
-     的話深水段的潛水員會整個沒入黑色，深度感是有了，但照片等於白放。偏藍而不是
-     偏黑也是同理——要讀起來像「深水的顏色」，不是像有人把燈關掉。 */
-  background: radial-gradient(130% 85% at 50% 0%, rgba(5, 45, 80, 0.18), rgba(2, 12, 28, 0.58));
-  opacity: clamp(0, calc((var(--progress, 0) - 0.46) / 0.42), 1);
-}
-
-/* ---- 10. 手機：深度計讓位給內容，粒子減量，照片改用 960 寬（見 ChapterMedia） ---- */
+   水下微粒、光柱、生物數量的降規格全部在三.js 那一邊做（DiveEngine 的
+   isMobileSpec()，判準跟這裡一致：max-width 639px 或粗指標／觸控），因為
+   那些現在是 WebGL 裡的物件，不是 DOM 節點，CSS 選不到也管不著。這裡只
+   剩深度計這個純 DOM 的東西還需要在小螢幕上收掉。 */
 
 @media (max-width: 639px) {
-  /* 深度計會擋到文字，小螢幕直接收掉；深度感這時候主要靠水色與微粒撐。 */
+  /* 深度計會擋到文字，小螢幕直接收掉；深度感這時候主要靠 3D 場景的水色與
+     濃霧撐，讀數本身讓位。 */
   .progress-armed .depth-meter {
     display: none;
-  }
-  /* 粒子數量砍半：中階手機同時跑幾十顆會掉幀，流暢度優先於密度。 */
-  .water-snow:nth-child(2n),
-  .water-bubble:nth-child(2n),
-  .water-shaft:nth-child(n + 4) {
-    display: none;
-  }
-  .chapter-media-img {
-    /* 小螢幕上滿版照片很容易糊掉細節，稍微往中間收一點對比 */
-    filter: saturate(1.05) contrast(1.04);
   }
 }
 
@@ -686,8 +610,7 @@ body {
   .scroll-cue {
     display: none;
   }
-  /* 水體整層拿掉：它的意義完全來自持續運動，關掉動畫之後只剩一堆靜止的斑點。 */
-  .water-column {
-    display: none !important;
-  }
+  /* 3D 場景本身在 DiveCanvas.tsx 裡就會檢查 prefers-reduced-motion，開啟時
+     根本不建立 WebGL renderer，畫布維持空白，不需要在這裡另外拿 CSS 蓋掉；
+     .dive-scrim 是靜態漸層、不含動畫，開不開都留著沒差。 */
 }

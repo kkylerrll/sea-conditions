@@ -1,62 +1,180 @@
-# 首頁改版交接（未完成，工作區未 commit）
+# 首頁改版交接（3D 下潛版，工作區未 commit）
 
-這份是給下一個 session 的交接。工作全部在工作區，**沒有任何 commit**。
+這份是給下一個 session 的交接。工作全部在工作區，**沒有任何 commit**。上一版
+（五張照片交叉溶接）的交接內容已經過時，整份改寫；舊版存檔在 commit
+`d8def41`，需要回頭找舊邏輯可以從那裡挖。
 
 ---
 
-## 一、使用者要的是什麼
+## 一、使用者要的是什麼，以及三輪回饋
 
-使用者傳了兩支 IG 風格的參考影片（分析過逐幀畫面），要首頁做成同樣的效果：
+**核心要求：捲動的時候，看到的是同一個潛水員持續下潛，不同深度出現不同魚
+類，最後墜入深海。** 不是換照片、不是換場景，是連續的一次下潛。
 
-**參考效果＝把捲動當播放頭的分章式敘事。** 一個滿版 sticky 舞台，捲動不是把內容往上推，而是在章節之間過帶；左側有狀態指示、底部有時間軸進度條；深色、電影感、滿版真實照片。
+### 第一輪：五張照片交叉溶接 → 使用者否決兩次
 
-使用者另外要求：**圖片從線上免費圖庫抓。**
+> 但我想要的效果是持續潛水的效果 而不是往下滑只是單純的換圖片
 
-### 兩次回饋（重要，決定了現在的架構）
+根因：所有東西都在「章節」裡面淡入淡出，本質上還是換圖。最終定案：拿掉
+照片，改成即時 3D 場景（three.js），一個真的潛水員模型＋隨深度出現的生物，
+攝影機跟著往下潛，只有章節文字在換頁，3D 世界從頭到尾連續。
 
-1. 第一版做成五章交叉溶接之後，使用者說：
+### 第二輪：3D 版本做出來、模型也整合進去之後 → 使用者再次否決
 
-   > 但我想要的效果是持續潛水的效果 而不是往下滑只是單純的換圖片 可以多一點互動感
+四個具體抱怨，對應的根因和修法：
 
-   → 根因是**所有東西都放在「章節」裡面**，所以每個元素都跟著章節淡入淡出，必然讀起來像換圖。修法是把連續的元素移到章節**外面**（見下方「水體層」）。
+1. **「潛水員很晚才出現」**——根因是舊版把「潛水員的畫面位置」跟「攝影機
+   位置」焊死在一起（`camera.y = diverY + 0.4`），潛水員在畫面上幾乎不會動，
+   加上舊版的光效（頭燈聚光燈、點光源補光）在淺水段強度接近 0，潛水員本體
+   顏色又深，視覺上很不起眼。修法見下面「潛水員的畫面位置」。
+2. **「魚只出現在某一層，深海魚幾乎沒看到」**——根因是每種生物只有一個固定
+   深度（公尺數），深海生物又擺在很深的地方；深度換算曲線後段是非線性的
+   （見 `depth.ts`），同一段捲動距離在深海對應的公尺數暴增，深海生物等於
+   被塞進一個極短的捲動窗口，捲過去的時候人根本來不及看。修法：生物改成
+   在「捲動進度」上均勻隨機分布（不是在公尺數上），深海段也從佔捲動長度
+   0.2 加大到 0.35。見下面「生物分布」。
+3. **「像在換圖，光效很假」**——根因是光柱／頭燈聚光燈／點光源補光這些「看
+   得見光束本體」的效果，在使用者眼裡讀成螢幕特效而不是真的光。修法：
+   全部拿掉，只留 AmbientLight／HemisphereLight 這種「平光」，顏色/強度是
+   深度的連續函數（沒有依章節跳動的階梯）。鮟鱇魚的誘餌只剩 emissive 材質
+   自體發光，不掛額外光源。
+4. **「潛水員應該從頭滑到底，往上捲要浮起來」**——修法：潛水員在畫面上的
+   垂直位置（progress 0 時貼近頂端、progress 1 時貼近底部）跟他的「真實
+   深度」（決定環境變暗、生物出現時機）**拆成兩件事**分開算；朝向（頭朝下
+   下潛／頭朝上上浮）跟著捲動方向平滑轉換，不是瞬間翻頭。見下面兩節。
 
-2. 使用者指定後續實作交給 Sonnet 執行，主 session 只負責討論。
+三輪回饋都指向同一個原則：**凡是「看起來像特效／卡通」的東西都要拿掉，
+凡是「敘事需要連續」的地方都不能有階梯或鎖死的畫面位置。**
 
 ---
 
 ## 二、現在的架構
 
-### 資料流：只有一個 rAF
+### 資料流：兩個 rAF，一份共享狀態
 
-`ScrollScene.tsx` 掛一個 scroll listener ＋ 一個 rAF，每幀寫出：
+`ScrollScene.tsx` 掛一個 scroll listener＋一個 rAF，每幀寫出：
 
 | 寫出的東西 | 用途 |
 |---|---|
-| `--progress` 0→1 | 捲動進度＝深度。幾乎所有 CSS 效果都讀它 |
-| `--scroll-vel` 0→1 | 捲動快慢，停手後自行衰減（衰減用的 rAF 只在速度 > 0 時存在） |
-| `--pointer-x` / `--pointer-y` | 游標視差（另一個 passive pointermove listener） |
-| `[data-depth-readout]` 的 `textContent` | 深度讀數。**刻意不走 React state**，這個數字每幀都變，走 state 等於每幀 re-render 整棵樹 |
-| `.is-active` | 只在跨章時 toggle，不是每幀 |
+| `--progress` CSS 變數 0→1 | 章節文字的交叉淡出淡入（`--vis2`）、深度計游標 |
+| `--scroll-vel` CSS 變數 | 目前沒有 CSS 效果在讀（水體 DOM 粒子已經拿掉），保留給以後 |
+| `diveState.progress` | 同一個 progress，寫進 `diveState.ts` 這個模組級物件 |
+| `diveState.velocity` | 捲動快慢，潛水員游速、微粒流速用 |
+| `diveState.direction` | 1＝往下捲，-1＝往上捲，帶滯後（10px 門檻）避免手震一直翻轉 |
+| `[data-depth-readout]` textContent | 深度讀數，刻意不走 React state |
+| `.scroll-dir-up` / `.is-active` | 只在方向翻轉／跨章時才動 classList |
 
-**其餘全部是 CSS 讀這些變數算出來的。** 不要新增 scroll listener，不要做逐幀樣式計算，不要加套件。
+`DiveCanvas.tsx`（three.js 場景）有自己的 rAF——場景要在使用者停手時也
+繼續動（生物游動、水母漂浮），不能只在 scroll 事件裡更新，所以不能共用
+ScrollScene 的 rAF，只共讀 `diveState` 這一份資料，不新增第二個 scroll
+listener。
 
-### 降級（這是硬性要求，不要破壞）
+### 深度換算：`depth.ts`
 
-所有捲動相關的 CSS 都 scope 在 `.progress-armed` 底下。這個 class 只有在「JS 有跑」**且**「`prefers-reduced-motion` 關閉」時才會掛上。
+```
+progress 0    → 0.65   線性對應 0 → 40m（寫實潛水）
+progress 0.65 → 1      三次方 easing 對應 40 → 1000m（墜入深海，故意暴衝）
+```
 
-沒有它的時候：整頁退回一般垂直長頁，五章依序堆疊、全部可見可讀。
+0.65 這個切點原本是 0.8，第二輪回饋改小——深海生物需要更長的捲動距離才有
+機會被看到。`environmentDarkness(progress)` 是另一條獨立的曲線，專門給
+背景色／濃霧／燈光衰減用，**不要**跟 `depthAt()`／`MAX_DEPTH_M` 混用：
+`MAX_DEPTH_M` 是 1000，如果暗化程度直接跟公尺數掛鉤，0～40m（寫實潛水
+全部範圍）換算成 0～1000 只佔 0～0.04，畫面幾乎不會變暗。
 
-`.water-column` 和 `.depth-meter` 預設都是 `display: none`，只在 `.progress-armed` 下出現 —— 這是刻意的：一個永遠停在 0.0 的深度讀數比沒有讀數更糟。
+### 潛水員的畫面位置：跟「真實深度」拆開算
 
-**絕對不要讓任何內容依賴 `--progress` 有被設值**，否則沒 JS 就會整片空白。
+`dive/engine.ts` 的 `update()` 裡，潛水員的世界座標**不是**直接等於
+`depthToWorldY(depthAt(progress))`。做法：
+
+1. 攝影機的 Y（`this.cameraY`）用指數平滑追著潛水員的真實深度跑，帶一個
+   時間常數（`CAMERA_LAG_TAU`）造成的落後——這個落後就是「生物持續往上
+   流過去」的體感來源，深海暴衝那段相對速度感也是靠它。
+2. 潛水員該出現在螢幕高度的哪個比例（`frac`，0＝頂端、1＝底部）是
+   `progress` 的函式（`SCREEN_FRAC_TOP=0.18` → `SCREEN_FRAC_BOTTOM=0.78`，
+   `smoothstep` 過渡)。
+3. `diverWorldYForFraction()` 用攝影機的垂直視角＋潛水員到攝影機的固定距離
+   反推：要讓潛水員出現在某個螢幕高度，他的世界 Y 該是多少。這是精確的
+   三角函數反推，不是攝影機俯仰角的近似值——如果直接讓攝影機大幅落後
+   潛水員的真實深度（深海段可以差到 300 多個單位），近似公式會整個垮掉。
+
+好處：潛水員的螢幕位置只取決於 `progress`，跟攝影機的落後動態完全無關，
+不管 `CAMERA_LAG_TAU` 怎麼調，潛水員永遠準確落在該在的高度。
+
+### 潛水員的朝向：跟捲動方向，不是跟深度
+
+`this.facing`（0＝頭朝下下潛姿態，1＝頭朝上上浮姿態）用指數平滑追著
+`diveState.direction` 的目標值跑（`FACING_TAU`），跟上面的「螢幕位置」是
+兩個完全獨立的系統：位置只認 `progress`，朝向只認「現在往哪個方向捲」。
+往上捲會慢慢轉成上浮姿態，往下捲慢慢轉回下潛姿態，轉換過程是連續的
+（`Math.lerp` 內插 pitch 角度)，不會用 `if` 瞬間切換兩張姿態。
+
+### 生物分布：在捲動進度上均勻分布，不是在公尺數上
+
+`spawnInRange(kind, [progressMin, progressMax], count, ...)`——每個生物的
+深度是「隨機挑一個進度值，再用 `depthAt()` 換算成公尺」，不是直接在公尺
+數上取隨機。理由見上面第二輪回饋的第 2 點。各物種的進度區間刻意重疊：
+
+```
+REEF_RANGE   [0.02, 0.35]   珊瑚礁魚
+SCHOOL_RANGE [0.25, 0.55]   鯖魚
+DROP_RANGE   [0.45, 0.70]   海龜／鎚頭鯊
+ABYSS_RANGE  [0.62, 1.00]   鮟鱇魚／水母
+```
+
+重疊區段會有兩種生物同時在畫面上，銜接處不是硬切。生物本身用世界座標
+固定不動、繞著自己的深度帶做環形漂移（`c.root.position` 用 `Math.cos/sin`
+算），是攝影機在動，不是生物在跟著捲動位移——這樣才會讀成「生物持續被
+經過」而不是「生物自己在飄」。
+
+### 燈光：只剩平光，沒有看得見光束本體的東西
+
+`this.ambient`（AmbientLight）＋`this.hemi`（HemisphereLight），顏色/強度
+都是 `environmentDarkness(progress)` 的連續函數，兩者都留一個下限（不歸零）
+——沒有頭燈或補光點光源頂替之後，這是潛水員跟生物在深海章節還看得見的
+唯一原因。**拿掉的東西**：光柱平面（god rays）、潛水員頭燈聚光燈
+（`SpotLight`）、潛水員專用點光源補光、鮟鱇魚誘餌旁邊的點光源（誘餌現在
+只靠 `emissive` 材質自體發光）。這些全部是第二輪回饋要求刪掉的「看起來
+像特效」的光效。
+
+### 模型載入：全部一次載入，不分批
+
+`dive/models.ts` 的 `ALL_MODELS`——七個模型壓縮後總共約 2.6MB，第二輪
+回饋之後拿掉了「潛水員／珊瑚礁魚先載，深海生物等閒置或捲過 30% 才載」
+的分批機制：體積小到不值得為了省一點點初始頻寬，犧牲深海生物準時出現。
+`DiveEngine` 建構時就對七個模型全部呼叫 `tryLoadModel()`。
+
+模型載入失敗（找不到檔案、fetch 出錯）會 `console.warn` 並維持
+`buildPlaceholder()` 產生的替代幾何，讓頁面在有沒有模型檔的情況下都能動
+——這不是理論上的 fallback，七個模型壓縮前都是這樣先跑通場景的。
+
+**重要的骨架動畫陷阱**：多實例的生物（鯖魚、水母、珊瑚礁魚群）用
+`SkeletonUtils.clone()`（`three/examples/jsm/utils/SkeletonUtils.js`）複製
+模型，**不能**用普通的 `Object3D.clone(true)`——後者對有骨架的
+`SkinnedMesh` 是壞的：只會複製 `skeleton` 的參照，不會把 `skeleton.bones`
+重新指向新複製出來的骨頭節點，複製體會繼續共用原始（從未被加進場景、
+`matrixWorld` 永遠不更新）的骨架，蒙皮頂點因此用一組跟複製體自身位置完全
+無關的錯誤矩陣計算，畫面上會出現「模型出現在隨機位置、大小失控」的詭異
+巨大生物（這是實際踩過的坑，花了不少時間排查）。
+
+### 降級（硬性要求，不要破壞）
+
+所有捲動相關的 CSS 都 scope 在 `.progress-armed` 底下，只有「JS 有跑」且
+「`prefers-reduced-motion` 關閉」時才會掛上。沒有它的時候：整頁退回一般
+垂直長頁，五章依序堆疊、全部可見可讀，背景是純 CSS 的深水漸層（見
+`globals.css` 的 `.landing-scene` background）。`DiveCanvas.tsx` 自己也會
+檢查 `prefers-reduced-motion` 跟 WebGL 支援度，任一個不通過就完全不建立
+`DiveEngine`，canvas 維持空白透明，底下的 CSS 漸層會透出來——不會有白閃
+黑閃，也不會有空的 3D 畫布卡住畫面。
 
 ### 圖層順序（sticky 舞台內）
 
 ```
-照片 z-index:0  →  水體 1  →  章節文字 2  →  深度計／進度條 3
+DiveCanvas z-index:0 → dive-scrim z-index:1 → 章節文字 z-index:2 → 深度計／進度條 z-index:3
 ```
 
-水體必須夾在照片和文字中間，文字才不會被微粒蓋住。
+`dive-scrim` 是一層固定的暗化漸層，給文字墊底用——3D 場景的顏色是連續漸變
+的，沒辦法像照片版那樣針對每一章調對比。
 
 ---
 
@@ -66,129 +184,254 @@
 
 | 檔案 | 作用 |
 |---|---|
-| `src/components/landing/chapters.tsx` | 五章資料（`CHAPTERS`, `CHAPTER_SPAN`） |
-| `src/components/landing/ChapterMedia.tsx` | 每章的 `<picture>` ＋ scrim ＋ 暈影 |
-| `src/components/landing/ChapterChrome.tsx` | 底部進度條 |
-| `src/components/landing/WaterColumn.tsx` | **水體層**：光柱、懸浮微粒、氣泡、水色 |
-| `src/components/landing/waterColumnField.ts` | 粒子座標 |
-| `src/components/landing/DepthMeter.tsx` | 連續深度讀數 ＋ 刻度 ＋ 游標 |
-| `src/components/landing/depth.ts` | `MAX_DEPTH_M = 40`、`SURFACE_PORTION = 0.45`、`depthAt()` |
-| `public/landing/` | 五張照片 × (1920 / 960 / lqip) WebP，共約 988K |
-| `public/landing/CREDITS.md` | 照片授權清單 |
+| `src/components/landing/diveState.ts` | 共享狀態：`progress`／`velocity`／`direction`，ScrollScene 寫、三.js 讀 |
+| `src/components/landing/DiveCanvas.tsx` | 掛載點，動態載入 `dive/engine.ts`，管 WebGL/reduced-motion 降級 |
+| `src/components/landing/dive/engine.ts` | 3D 場景主體：攝影機、生物、燈光、渲染迴圈 |
+| `src/components/landing/dive/models.ts` | 模型登記表（路徑／縮放／角度修正／深度區間／授權出處） |
+| `src/components/landing/dive/placeholders.ts` | 程序化替代幾何，模型檔不存在或載入失敗時頂上 |
+| `public/landing/models/*.glb` | 七個壓縮後的模型（進版控） |
+| `public/landing/models/src/` | 原始未壓縮模型（不進版控，見 `.gitignore`） |
 
 ### 修改
 
-`src/app/page.tsx`（重寫成五章）、`src/app/globals.css`（首頁 CSS 全部換掉）、`src/components/landing/ScrollScene.tsx`（加了速度／深度／游標）、`src/components/AppChrome.tsx`（頁尾加版權標示）、`src/components/landing/InfoPoints.tsx`（`CARD` 簡化成 `"dive-info-card"`）
+`src/app/page.tsx`（拿掉照片章節，加 `DiveCanvas`＋`dive-scrim`）、
+`src/app/globals.css`（拿掉照片／水體 DOM 粒子的 CSS，加 `.dive-canvas`／
+`.dive-scrim`）、`src/components/landing/ScrollScene.tsx`（寫
+`diveState.direction`，拿掉沒人用的游標視差）、
+`src/components/landing/depth.ts`（重寫，拿掉 `SURFACE_PORTION`，加
+`environmentDarkness()`）、`src/components/landing/DepthMeter.tsx`（刻度
+改用 `progressAt()` 換算非線性位置）、`src/components/landing/chapters.tsx`
+（拿掉 `img`/`focus`，英文代號改成 THE SURFACE/REEF/SCHOOL/DROP/ABYSS）、
+`src/components/AppChrome.tsx`（頁尾拿掉照片版權，等模型真的出貨再補模型
+標示）、`public/landing/CREDITS.md`（改記模型出處，目前全部標「尚未出貨
+（替代幾何）」）、`.gitignore`（加 `models/src/`）。
 
-### 五章內容
+### 刪除
 
-| # | 英文 | 照片 | 標題 | 搭配 |
-|---|---|---|---|---|
-| 00 | THE SURFACE | surf-barrel | 海況去不去 | CTA |
-| 01 | THE SWELL | surf-lineup | 同一道浪，兩種答案 | `DiveSurfContrastInfo` |
-| 02 | THE WATERLINE | waterline | 全台海況，一次看完 | `CoverageInfo` |
-| 03 | THE DIVE | dive-reef | 資料一天更新兩次 | `UpdateRhythmInfo` |
-| 04 | THE DEEP | deep-blue | 下水前，先看今天的海況 | CTA |
+五張照片（`public/landing/*.webp`）、`ChapterMedia.tsx`、`WaterColumn.tsx`、
+`waterColumnField.ts`（DOM 粒子系統，被三.js 的懸浮微粒 `Points` 取代）、
+六個沒人引用的舊 SVG 場景檔（`SurfHero.tsx`、`WaterlineScene.tsx`、
+`DiveScene.tsx`、`DeepScene.tsx`、`SceneDefs.tsx`、`wave.ts`）——這些都在
+`d8def41` 有備份。
 
-原本首頁的文案內容（13 地區 / 46 下水點、潛水衝浪燈號對比、一天更新兩次）全部保留，放進對應章節。
+### 章節內容
+
+五章的中文文案、資訊卡、CTA 全部沒動，只有英文代號跟著新主題改了：
+
+| # | 英文 | 深度 | 標題 |
+|---|---|---|---|
+| 00 | THE SURFACE | 0m | 海況去不去 |
+| 01 | THE REEF | ～8m 附近 | 同一道浪，兩種答案 |
+| 02 | THE SCHOOL | ～20m 附近 | 全台海況，一次看完 |
+| 03 | THE DROP | ～35m 附近 | 資料一天更新兩次 |
+| 04 | THE ABYSS | 深海（1000m） | 下水前，先看今天的海況 |
 
 ---
 
-## 四、動到會壞的地方
+## 四、模型與壓縮
 
-### 1. `SURFACE_PORTION = 0.45` 同時寫在三個地方
+### 七個模型的來源、比例換算、動畫片段名稱
 
-- `depth.ts` 的 `SURFACE_PORTION`
-- `globals.css` 的 `.depth-cursor` 的 `top`（`(var(--progress) - 0.45) / 0.55`）
-- `globals.css` 的 `.progress-armed .water-column` 的 `opacity`（門檻 `0.44`）
+全部記在 `dive/models.ts` 的 `MODEL_REGISTRY` 裡，每筆都有註解說明 scale
+是怎麼從原始 bbox 反推的（不同 Sketchfab 模型用的來源單位不一致，有些是
+公尺、有些明顯是公分）。動畫片段名稱是實際 inspect 出來的真名，不是猜的
+（例如海龜其實沒有真的游泳動畫，`EmptyAction.001` 只有 1 秒 20 個關鍵
+影格，牠的「活著」感完全靠引擎的程序化擺動撐)。
 
-**改一個就要三個一起改。**
+### 壓縮指令
 
-這個值被章節內容綁死：00、01 兩章是**水面上**的衝浪照片，真正破水面的是第 02 章（progress 0.5）。曾經設成 0.22，結果畫面是「水面上的衝浪照片疊著水下懸浮微粒，旁邊寫著 6.2m」，自相矛盾。
+原始檔在 `public/landing/models/src/`（diver/reef-school/mackerel/turtle/
+hammerhead/anglerfish/jellyfish.glb，共約 53MB）。三個用
+`KHR_materials_pbrSpecularGlossiness`（diver、reef-school、turtle）的模型
+**要先轉成標準 metal/rough**，不然 three.js 新版 `GLTFLoader` 不認得這個
+舊擴充，材質會退化成預設灰色（花了一輪才抓到這個問題，一開始只看到灰色
+無貼圖的魚）：
 
-若章節有增減：`SURFACE_PORTION = (越線章索引 - 0.5) / (章節數 - 1)`。
-
-### 2. 交叉溶接的兩條曲線
-
-```css
---vis:  clamp(0, calc((0.75 - var(--dist)) / 0.5), 1);   /* 底圖，溶接窗較寬 */
---vis2: clamp(0, calc((0.45 - var(--dist)) / 0.25), 1);  /* 文字，收得比較早 */
+```bash
+npx @gltf-transform/cli metalrough src/<name>.glb /tmp/<name>-mr.glb
+npx @gltf-transform/cli optimize /tmp/<name>-mr.glb models/<name>.glb \
+  --texture-compress webp --texture-size 512   # 小型魚用 256
 ```
 
-`--vis2` 在兩章正中間是 0（兩邊都是），所以文字是「上一段先退乾淨、下一段才進來」。
-**這是修過的 bug**：原本兩章的文字會同時 opacity 1，兩段字疊在一起同時可讀。
+其餘四個（mackerel／hammerhead／anglerfish／jellyfish）沒有這個擴充，
+直接 `optimize` 即可。海龜跟鮟鱇魚的原始網格很密，額外加
+`--simplify true --simplify-ratio 0.35~0.4 --simplify-error 0.01`。
 
-### 3. 暗化是三層疊加
+壓縮後總大小約 **2.6MB**（遠低於 6MB 的目標）：
 
-`chapter-media-scrim` ＋ `chapter-media-vignette` ＋ `water-tint`。三層都吃滿的話深水段的潛水員會整個沒入黑色 —— 深度感有了，但照片等於白放。已經調過一次配比，再動要一起看。
+| 檔案 | 大小 |
+|---|---|
+| diver.glb | 340K |
+| reef-school.glb | 1.2M |
+| mackerel.glb | 88K |
+| turtle.glb | 300K |
+| hammerhead.glb | 56K |
+| anglerfish.glb | 368K |
+| jellyfish.glb | 300K |
 
-### 4. `waterColumnField.ts` 的座標是手寫的
+### 授權標示狀態
 
-刻意不規則。**不要用 `Array.from` 或迴圈重新產生** —— 均勻產生的粒子場肉眼看得出行列，一看就知道是程式畫的。
-
-### 5. 版權標示不能拿掉
-
-照片是 CC BY / CC BY-SA，**標示作者是授權條件**。標示在 `AppChrome.tsx` 頁尾，完整清單在 `public/landing/CREDITS.md`。
-BY-SA 的「相同方式分享」及於縮圖轉檔後的檔案本身，不影響專案其他部分。
-
-照片來源：Wikimedia Commons（Unsplash / Pexels 從指令列會被 Cloudflare 擋，Commons 是唯一能穩定抓原圖的來源；注意 Commons 的 `/thumb/` 路徑會 400，要抓原圖再本地縮）。
+`public/landing/CREDITS.md` 目前每個模型都標「尚未出貨（替代幾何）」——
+**這是不對的，模型其實已經整合進場景在用了**，這份文件在這次改版裡沒有
+跟著模型的實際整合狀態更新，下一個 session 要記得把 CREDITS.md 跟
+`AppChrome.tsx` 頁尾改成列出實際使用中的七個模型的作者/授權（全部
+CC BY 4.0，資料都在 `models.ts` 的 `credit` 欄位，直接抄）。**這是本次
+交接已知但沒修的落差，優先度高**——CC BY 4.0 的標示是授權條件，不是可省
+的裝飾。
 
 ---
 
 ## 五、驗證狀態
 
-### 已親眼確認
+### 已確認
 
-- 深度讀數 0.0m → 40.0m 連續跟著捲動，游標位置與讀數一致
-- 兩章之間只有一段文字可讀（先前會疊在一起，已修）
-- 01 湧浪乾淨銳利、無水下霧氣（入水點修正後）
-- 03 / 04 潛水員在深藍中清楚可見（暗化配比調整後）
-- 02 越線破水面的敘事成立（照片最柔最霧，但霧感呼應「越線」，**Sonnet 建議不換**）
-- 底部進度條填色與 active 編號正確
-- 微粒拖尾機制運作（靜止 1 倍 → 全速 5.5 倍）
-- 無 JS 降級：移除 `.progress-armed` 後五章文字 opacity 全為 1，水體與深度計隱藏
 - `npx tsc --noEmit` 通過
+- `npm run build` 通過（production build，5 個路由都正常產生）
+- 首頁 progress 0 / 0.25 / 0.5 / 0.75 / ~1.0 的截圖：深度讀數連續跟著
+  捲動（0.0m → 1000.0m，後段明顯暴衝）、章節文字交叉淡出淡入正確（同一
+  時間只有一段文字可讀）、七個真模型都有實際載入並顯示（不是替代幾何）
+  ——珊瑚礁魚是彩色的熱帶魚、鯖魚成群、海龜與鎚頭鯊在深藍段出現、鮟鱇魚
+  誘餌在深海段有微微發光
+- 第二輪回饋的四點都有截圖確認：
+  - 潛水員在 progress 0 時已經在畫面上方清楚可見（不用等模型泡完才出現）
+  - 潛水員的螢幕位置在 progress 0 / 0.5 / 1.0 分別落在畫面上方／中央／
+    下方，跟設計的 0.18→0.78 曲線一致
+  - 畫面裡沒有光柱／光束／頭燈聚光燈，只有平光的漸層背景
+  - 往上捲之後有觸發方向翻轉（`diveState.direction` 邏輯有被呼叫到）
+- 移除 `.progress-armed` 後五章文字 opacity 全為 1，退回一般垂直長頁
 
-### 沒驗到（誠實記錄）
+### 沒驗到／驗得不完整（誠實記錄）
 
-- **手機寬度 390px**：`resize_window` 在這個環境沒有真的改變 viewport，只能讀 CSS 確認 `@media (max-width: 639px)` 的邏輯存在（深度計隱藏、粒子 `nth-child(2n)` 砍半）。**建議使用者自己縮視窗或用手機看。**
-- **效能 / 掉幀**：自動化過程分頁會失焦（`document.hidden`），量到的 FPS 是假的。肉眼看多次截圖沒有明顯卡頓，但不等於真機測過。因為沒有實證，**沒有動粒子數**。
-  - 潛在風險：24 顆微粒每幀都要重算 `scale`（因為 `--scroll-vel` 每幀在變）。`scale` 是可合成屬性，理論上留在 compositor，但沒實測。若真的掉幀，先減 `waterColumnField.ts` 的粒子數，不要拿掉效果。
+- **潛水員朝向翻轉的視覺確認不完整**：往上捲之後有截圖看到潛水員位置
+  往上移，但因為潛水員本體較小、深度較深時顏色深，最後一次想貼近放大
+  確認頭朝上的姿態時，取樣的截圖時間點沒抓到潛水員（牠在畫面上會因為
+  生物環形漂移的動畫持續移動）。程式邏輯（`this.facing` 內插 pitch）
+  已經 review 過，方向翻轉的訊號流（ScrollScene → diveState.direction →
+  engine 的 `facingTarget`）也對照過，邏輯正確，但沒有拿到一張構圖夠好、
+  清楚看到「頭朝上」姿態的截圖。
+- **這個瀏覽器自動化環境本身有個怪癖，記下來省下一次 session 的除錯時間**：
+  自動化的分頁 `document.hidden` 預設是 `true`（不算真的被瀏覽器丟到背景，
+  但 Page Visibility API 這樣回報），而 `DiveEngine.start()` 裡的
+  `if (document.hidden) return;` 會讓整支渲染迴圈跳過更新——這是刻意的
+  設計（真實使用者切分頁時省電），但在這個自動化環境下代表「純粹呼叫
+  JS 捲動」不會讓 3D 場景真的更新，只有呼叫截圖工具（`computer` 的
+  `screenshot`／`zoom`）那一刻,瀏覽器才會真的跑一次渲染。要驗證 3D 場景
+  的即時狀態,必須：`Object.defineProperty(document,'hidden',{get:()=>false})`
+  ＋`dispatchEvent(new Event('visibilitychange'))`，然後每次想看最新畫面
+  都要接著呼叫一次截圖工具（純粹讀 JS 屬性看不到渲染後的最新狀態）。
+  這不是頁面的 bug，是這個特定自動化環境的限制。
+- **手機寬度／效能／FPS**：跟第一輪交接記錄的狀況一樣，這個環境沒辦法
+  真的縮視窗或量幀率，`isMobileSpec()` 的降規格邏輯只做了程式碼審查，
+  沒有實機驗證。
+- **深海生物「密度是否真的足夠」只驗了幾個 progress 取樣點**：`spawnInRange`
+  的區間重疊與均勻分布是照邏輯設計的，但沒有連續捲動整段深海區間去確認
+  中間有沒有意外的空窗（例如兩隻鮟鱇魚剛好都繞到鏡頭後方的那個瞬間）。
 
 ---
 
-## 六、待決事項（都還沒做，等使用者決定）
+## 五之二、第三、四輪回饋之後的架構變動（取代前面部分敘述，這裡是最新狀態）
 
-### 1. 兩章正中間的「雙重曝光」——最主要的待辦
+使用者實測後又回饋了兩輪，改動的地方比較大，上面「二、現在的架構」有些段落
+（尤其是攝影機落後、生物固定深度環繞、懸浮微粒）已經過時，這裡補正：
 
-**現象**：兩章交界（例如 00/01）時，兩張照片幾乎等透明度疊在一起，還會透出下一章資訊卡的文字，看起來像雙重曝光的錯圖，不只是「有點糊」。
+1. **攝影機不再刻意落後真實深度。** 上面提到的 `CAMERA_LAG_TAU=0.9s` 是
+   round 2 的設計，round 3 發現這個「秒級落後」在深度暴衝段（見 depth.ts）
+   永遠追不上，導致「深海生物看不到、淺水生物賴著不走」。現在攝影機只用
+   一個 0.12 秒的數值平滑（`CAMERA_SMOOTH_TAU`）消除單幀跳動，幾乎等於
+   直接等於真實深度。潛水員的螢幕垂直位置（progress 0→1 對應畫面
+   30%→78% 高度）完全靠 `diverWorldYForFraction()` 反推攝影機視角算出來，
+   不依賴攝影機的移動方式，所以拿掉落後不影響這件事。
+2. **潛水員固定偏到畫面右側，文字改成左欄（CSS）。** `dive/engine.ts` 的
+   `SCREEN_FRAC_X`：>=1024px（`narrowLayout` 判斷，見 `isNarrowLayout()`）
+   時是 0.71（畫面偏右），窄螢幕時退回 0.5（置中）。CSS 那邊對應
+   `globals.css` 的 `@media (min-width: 1024px)`，把 `.chapter-inner`
+   整個挪到左欄（`margin-left: 7.5rem; width: 34rem`），這個斷點刻意跟
+   `isNarrowLayout()` 的 1023px 對齊，兩邊要一起改才對得上。
+3. **生物的移動方式整個重寫，不再是固定角速度繞圈。** 見 `dive/engine.ts`
+   的 `MotionKind`（`glide`／`school`／`solo`／`drift`）：
+   - 海龜／鎚頭鯊／鮟鱇魚是 `glide`——沿 X 軸單向緩慢移動，出邊界
+     （`laneWidth`）從另一邊繞回來。
+   - 鯖魚是 `school`——所有實例共用同一條用疊加正弦波做出的平滑漂移路徑
+     （`pseudoNoise1D`），個體只加一個固定的隊形偏移（`formationOffset`），
+     整群看起來像一起移動。
+   - 珊瑚礁魚（reefSchool，模型本身已經是 4 條魚的小群組）是 `solo`——
+     每個實例自己一條路徑，不用跟別的實例同步。
+   - 水母是 `drift`——維持原本的環繞＋垂直漂浮，沒有明確前進方向。
+   - `glide`／`school`／`solo` 都會呼叫 `orientToVelocity()`：拿當前的
+     移動方向當 lookAt 目標，再疊加 `models.ts` 裡每個模型的 `travelYaw`
+     （目前全部是 0，還沒有針對個別模型的朝向做過肉眼校正——見下面
+     「沒驗到」）。
+4. **懸浮微粒全部換成氣泡。** 舊版方形/圓點的 `THREE.Points`（marine snow）
+   整個拿掉，換成 `THREE.Sprite` + canvas 畫的半透明氣泡貼圖
+   （`buildBubbleTexture()`）：`ambientBubbles` 是散落在水柱裡的稀疏氣泡，
+   一定往上飄、飄出視野頂端就從底部回收；`burstPool` 是潛水員規律吐氣
+   （頭部位置，約 1.4~2.6 秒一次）借用的小氣泡池，重複利用不新建 Sprite。
 
-**根因**：交叉溶接本身。兩張照片在中點各 50%，調時間窗只能改變糊多久，躲不掉。
+### 第三、四輪的驗證重點
 
-**主 session 的建議（已向使用者提出，尚未回覆）**：
-> 換成**中間過一層深色**，而不是讓兩張照片互相穿透 —— 上一章沉進暗處、下一章從暗處浮出來。潛水本來就會穿過一層層光線遞減的水層，所以這不只是修 bug，它本身就是下沉敘事的一部分。
-
-替代方案：把交叉窗縮到很窄，接近硬切。乾淨但失去電影感，比較像投影片翻頁。
-
-### 2. 上一輪的 SVG 場景檔要不要刪
-
-`SurfHero.tsx`、`WaterlineScene.tsx`、`DiveScene.tsx`、`DeepScene.tsx`、`SceneDefs.tsx`、`wave.ts`
-
-現在沒有任何地方引用。**在 git 裡是未追蹤狀態，刪掉救不回來**，所以一直留著沒動。等使用者決定。
+- **潛水員 progress=0 被頂端裁切**已修好：`SCREEN_FRAC_TOP` 從 0.18 提高到
+  0.3。
+- **潛水員螢幕位置到底有沒有到畫面下方 78%**：這件事肉眼從截圖判斷很不
+  準——潛水員本體小、深海章節背景又接近全黑，光靠人眼在截圖裡目測百分比
+  誤差可以到 10 幾個百分點。最後是直接在瀏覽器裡用
+  `Vector3.project(camera)` 把潛水員的世界座標投影成螢幕座標算出精確值
+  （見這次驗證過程），確認 progress=1 時螢幕高度落在 76~78%，跟設計值
+  一致——**之後如果又懷疑這個數字不對，直接用 project() 量，不要用肉眼
+  看截圖判斷**，這是這次繞了不少路才確認下來的教訓。
+- 深度計時攝影機還沒完全追平真實深度前（大幅跳動捲動之後的一兩幀），
+  潛水員螢幕位置仍然精準是 78%（因為算法本身就是攝影機不管在哪裡，
+  diverY 都是相對攝影機算出來的），但畫面的整體「深度感」（背景色、
+  濃霧、附近生物）會有一瞬間的過渡感——這是預期中的，不是 bug。
+- 深海生物（鮟鱇魚／水母）在截圖裡有實際看到（含發光誘餌），但只驗了
+  幾個離散的深度取樣點，沒有逐幀確認整段深海過程都不會有空窗。
+- **生物朝向的逐一校正沒有做**：`orientToVelocity()` 的機制本身（拿速度
+  向量當 lookAt 目標）是通用、正確的做法，但每個模型的 `travelYaw` 目前
+  全部是 0——沒有針對七個模型各自的靜止朝向做「牠是不是在倒退游」的肉眼
+  校正（截圖裡的魚體型太小，看不出精確的頭尾朝向）。如果之後使用者又
+  回報「魚在倒退游」，先查是哪個物種，再去 `models.ts` 幫那個模型的
+  `travelYaw` 加或減 `Math.PI`（180 度）或 `Math.PI/2`（90 度），不用
+  動 `orientToVelocity()` 本身的邏輯。
+- 左欄排版跟潛水員置右在 >=1024px 的桌機視窗下用截圖確認過，沒有文字跟
+  潛水員／魚群重疊的情況；窄視窗（<1024px）的置中退回邏輯只做了程式碼
+  審查，沒有實機/縮視窗驗證（這個環境沒辦法可靠縮視窗，見第一輪交接
+  就記錄過的限制）。
 
 ---
+
+## 六、待辦（優先度由高到低）
+
+1. ~~補回模型授權標示~~——已在這次交接一併修好：`CREDITS.md` 改列七個
+   模型「實際使用中」，`AppChrome.tsx` 頁尾加回一行作者標示。
+2. 找機會用真的手機或縮小的瀏覽器視窗確認手機降規格（`isMobileSpec()`）
+   跟深度計隱藏邏輯。
+3. 拿掉這次為了 debug 而加的任何殘留（目前已經清乾淨，但下次改 `engine.ts`
+   時如果又加了 `window.__dive` 之類的除錯掛勾，記得改完拿掉）。
+4. 有機會的話用真的裝置量一次 FPS，尤其是深海段鮟鱇魚/水母數量比較多、
+   加上珊瑚礁魚/鯖魚可能還沒完全飄出畫面的重疊區間。
 
 ## 七、怎麼跑
 
 ```bash
 cd /Users/sdsfg/sea-conditions/frontend
-npm run dev     # 3000-3002 常被佔用，實際埠號看輸出
+npm run dev     # 3000 常被佔用，實際埠號看輸出；用 pnpm 也可以（專案其實是 pnpm，見 pnpm-lock.yaml）
 npx tsc --noEmit
+npm run build
 ```
+
+模型壓縮相關指令見上面「模型與壓縮」一節。
 
 ## 八、環境上的坑
 
-- `ffmpeg 9` 移除了 `-vsync`，`/watch` plugin 的腳本因此跑不起來 —— 分析影片改用 ffmpeg 直接抽幀
-- `ffmpeg` 沒有 `libwebp` encoder，轉 WebP 要用 `cwebp`（已隨 yt-dlp 裝進來）
-- 頁面上用 `window.scrollTo` 定位不可靠，用瀏覽器工具的 scroll 動作
-- 截圖偶爾會抓到整片空白的影格，那是擷取瑕疵不是頁面壞掉 —— 稍微捲動觸發重繪再截一次
+- **這個專案實際上用 pnpm**（`pnpm-lock.yaml` 存在），但 `npm install` 也
+  能跑、不會報錯，只是會產生一堆 `.pnpm` 路徑相關的 ERESOLVE 警告雜訊，
+  而且**絕對不要在 `npm run dev` 還在跑的時候另開一個視窗跑 `npm run build`**
+  ——兩者共用 `.next/` 快取目錄，同時寫入會讓 dev server 的 webpack 快取
+  損毀，導致頁面回報 500（`Cannot find module './xxx.js'`）。中獎的話
+  `rm -rf .next` 再重啟 dev server 就會恢復正常。
+- `ffmpeg 9` 移除了 `-vsync`，`/watch` plugin 的腳本因此跑不起來——分析
+  影片改用 ffmpeg 直接抽幀（這條是舊版遺留，3D 版沒再用到影片分析）
+- 頁面上用 `window.scrollTo` 定位在瀏覽器自動化工具裡「設定值」是可靠的，
+  但要讓 3D 場景讀到最新狀態，還要搭配上面第五節說的 `document.hidden`
+  覆寫技巧＋截圖觸發，純粹呼叫 `window.scrollTo` 不夠
+- 截圖偶爾會抓到整片空白或前一個狀態的影格，那是擷取瑕疵不是頁面壞掉——
+  稍微等一下或多截一張再看

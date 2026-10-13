@@ -66,13 +66,15 @@ export default function AppChrome({
       <div className="flex min-h-screen flex-col">
         <div className="min-h-screen bg-[#020617]">
           {children}
-          {/* 首頁底圖是 CC BY / CC BY-SA 授權的照片，授權條款要求標示作者，
-              所以這一行不能省；完整清單見 public/landing/CREDITS.md。 */}
+          {/* 首頁 3D 場景裡的潛水員與各種生物是 CC BY 4.0 授權的 Sketchfab 模型，
+              授權條款要求標示作者，這一行不能省；完整清單見
+              public/landing/CREDITS.md（跟 dive/models.ts 的 MODEL_REGISTRY
+              對得上）。 */}
           <footer className="landing-footer mx-auto mt-12 max-w-5xl border-t pt-6 text-center text-xs">
             <p>海況資料僅供參考，下水前請以現場狀況與官方沿岸預報為準。</p>
             <p className="mt-2 opacity-70">
-              首頁照片：Freddy Sinarahua、Brigitte Bourger、Matthew T Rader、Diego Delso（CC BY-SA 4.0）、
-              jqpubliq（CC BY 2.0），來源 Wikimedia Commons。
+              首頁 3D 模型：ucdavisterc、LasquetiSpice、1shxxn、DigitalLife3D、sharkingaround、
+              Abby_Holzworth1、n-（CC BY 4.0），來源 Sketchfab。
             </p>
           </footer>
         </div>

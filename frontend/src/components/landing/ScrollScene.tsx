@@ -5,9 +5,13 @@
 //
 // 每一幀寫出的東西：
 //   --progress    0→1 的捲動進度，等於這次下潛的深度。
-//   --scroll-vel  0→1 的捲動快慢，停下來會自己衰減回 0。水體微粒靠它決定要被拉多長，
-//                 這是「畫面回應了我的動作」唯一的來源——沒有它，微粒只是在自顧自地飄。
-//   --pointer-x/y 游標相對畫面中心的位移（-1→1），讓場景有極輕微的視差。
+//   --scroll-vel  0→1 的捲動快慢，停下來會自己衰減回 0。文字換章的節奏靠它，
+//                 這是「畫面回應了我的動作」的其中一個來源。
+//   diveState.*   跟上面兩個數字（加上下面的捲動方向）完全同步的一份拷貝，寫進
+//                 diveState.ts 這個模組級物件，供三.js 場景（DiveCanvas）的獨立
+//                 rAF 讀取。三.js 有自己的渲染迴圈（場景要在使用者停手時也繼續
+//                 動），不能等 CSS 變數，但也不需要再掛一個 scroll listener——
+//                 讀同一份數字就好。
 //   深度讀數      直接寫進 textContent，不走 React state：這個數字每幀都在變，
 //                 走 state 等於每幀 re-render 整棵樹，而實際要改的只有一個文字節點。
 //   .scroll-dir-up / .is-active  只在「方向翻轉」「跨章」時才動 classList。
@@ -16,6 +20,7 @@
 // 都不生效，版面退回一般的垂直長頁，內容全部可見——不會有任何東西卡在 opacity: 0。
 import { useEffect, useRef } from "react";
 import { depthAt } from "./depth";
+import { diveState } from "./diveState";
 
 // 捲動方向判斷的「防手震」門檻：單一 rAF frame 內位移小於這個值不算數，
 // 避免滑鼠滾輪或觸控板的微小回彈讓潛水員姿勢一直閃爍翻轉。方向只在「淨位移」
@@ -74,7 +79,12 @@ export default function ScrollScene({ children }: { children: React.ReactNode })
     let lastVelocityY = window.scrollY;
     let decaying = false;
 
-    const writeVelocity = () => root.style.setProperty("--scroll-vel", velocity.toFixed(3));
+    // --scroll-vel 給 CSS 讀（微粒拖尾等），diveState.velocity 給三.js 的渲染
+    // 迴圈讀（潛水員游速、微粒流速）——同一個數字兩個消費者，不重複計算。
+    const writeVelocity = () => {
+      root.style.setProperty("--scroll-vel", velocity.toFixed(3));
+      diveState.velocity = velocity;
+    };
 
     const decay = () => {
       velocity *= VELOCITY_DECAY;
@@ -93,6 +103,7 @@ export default function ScrollScene({ children }: { children: React.ReactNode })
       const raw = total > 0 ? -rect.top / total : 0;
       const clamped = Math.min(1, Math.max(0, raw));
       root.style.setProperty("--progress", clamped.toFixed(4));
+      diveState.progress = clamped;
       setActiveChapter(Math.round(clamped * span));
 
       if (depthEl) depthEl.textContent = depthAt(clamped).toFixed(1);
@@ -118,6 +129,9 @@ export default function ScrollScene({ children }: { children: React.ReactNode })
         if (nextScrollingUp !== scrollingUp) {
           scrollingUp = nextScrollingUp;
           root.classList.toggle("scroll-dir-up", scrollingUp);
+          // 潛水員的朝向（頭朝下下潛／頭朝上上浮）跟著這個方向翻轉，同一個
+          // 防手震的滯後門檻順便保護了三.js那邊，不會因為微小回彈一直轉頭。
+          diveState.direction = scrollingUp ? -1 : 1;
         }
         lastCommittedY = currentY;
       }
@@ -128,29 +142,10 @@ export default function ScrollScene({ children }: { children: React.ReactNode })
       requestAnimationFrame(updateProgress);
     };
 
-    // 游標視差：位移量很小（CSS 端只放大到幾 px），目的是讓畫面對「人在看它」有反應，
-    // 不是真的要做 3D。用 pointermove 一併涵蓋滑鼠與觸控筆；手機沒有游標，自然不會觸發。
-    let pointerTicking = false;
-    let pointerX = 0;
-    let pointerY = 0;
-    const applyPointer = () => {
-      pointerTicking = false;
-      root.style.setProperty("--pointer-x", pointerX.toFixed(3));
-      root.style.setProperty("--pointer-y", pointerY.toFixed(3));
-    };
-    const onPointerMove = (e: PointerEvent) => {
-      pointerX = (e.clientX / window.innerWidth) * 2 - 1;
-      pointerY = (e.clientY / window.innerHeight) * 2 - 1;
-      if (pointerTicking) return;
-      pointerTicking = true;
-      requestAnimationFrame(applyPointer);
-    };
-
     updateProgress();
     root.classList.add("progress-armed");
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", onScroll, { passive: true });
-    window.addEventListener("pointermove", onPointerMove, { passive: true });
 
     let observer: IntersectionObserver | null = null;
     if (typeof IntersectionObserver !== "undefined") {
@@ -173,7 +168,6 @@ export default function ScrollScene({ children }: { children: React.ReactNode })
     return () => {
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onScroll);
-      window.removeEventListener("pointermove", onPointerMove);
       // 讓還在跑的衰減 rAF 在下一幀自己結束，不然元件卸載後它會繼續對著
       // 已經脫離文件的節點寫樣式。
       decaying = false;

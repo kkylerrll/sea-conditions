@@ -14,6 +14,11 @@ frontend/.env.local
 # 座標產生器的 GeoJSON 快取（自動下載，見 frontend/scripts/README.md）
 frontend/scripts/.cache/
 
+# 首頁 3D 模型的原始檔（使用者從 Sketchfab 手動下載，體積大且有各自的授權
+# 條款，不進版本控制；出貨用的壓縮版放在 frontend/public/landing/models/ 底下
+# 沒有 src/ 這一層，那些會照常被追蹤）
+frontend/public/landing/models/src/
+
 # misc
 .DS_Store
 *.log

@@ -1,22 +1,29 @@
-# 首頁照片來源與授權
+# 首頁 3D 模型來源與授權
 
-首頁五章的底圖全部來自 Wikimedia Commons，皆為 Creative Commons 授權。
-原圖經過縮圖與轉檔（WebP，1920 / 960 兩種寬度）後放進 `public/landing/`，
-未做裁切或調色以外的改動。
+首頁的即時 3D 場景（three.js）裡，潛水員與各種魚類／海龜／鎚頭鯊／鮟鱇魚／
+水母都使用 Sketchfab 上的 3D 模型，全部是 CC BY 4.0。模型原始檔由使用者
+手動下載到 `public/landing/models/src/`（未加入版本控制），再用
+`@gltf-transform/cli` 壓縮成 `public/landing/models/<name>.glb` 出貨。
 
-CC BY 與 CC BY-SA 都**要求標示原作者**，所以下面這張表不能刪；頁面上的
-標示放在首頁頁尾。CC BY-SA 另外要求「衍生作品採用相同授權」——這裡的
-縮圖／轉檔屬於衍生，因此 `public/landing/` 底下的這些檔案本身同樣以
-CC BY-SA 4.0 釋出，不影響專案其他部分的授權。
+CC BY 4.0 要求標示原作者，所以下面這張表不能刪；同一份標示也放在首頁頁尾
+（見 `src/components/AppChrome.tsx`）。**目前七個模型全部隨頁面出貨、實際
+在場景裡使用中**（不是替代幾何）——`src/components/landing/dive/models.ts`
+的 `MODEL_REGISTRY` 是這份表的權威來源，改動模型時兩邊要一起改。
 
-| 檔名 | 章節 | 作者 | 授權 | 原始頁面 |
-|---|---|---|---|---|
-| `surf-barrel-*.webp` | 00 水面 | Freddy Sinarahua | CC BY-SA 4.0 | [Henry Espinoza Panta smashing a wave at Lobitos](https://commons.wikimedia.org/wiki/File:Henry_Espinoza_Panta_smashing_a_wave_at_Lobitos.jpg) |
-| `surf-lineup-*.webp` | 01 湧浪 | Brigitte Bourger | CC BY-SA 4.0 | [La horde — Surfers riding a wave in Paea, Tahiti](https://commons.wikimedia.org/wiki/File:La_horde_-_Surfers_riding_a_wave_in_Paea,_Tahiti.jpg) |
-| `waterline-*.webp` | 02 越線 | Matthew T Rader | CC BY-SA 4.0 | [Freediving in the Sea of Cortez at Playa Balandra](https://commons.wikimedia.org/wiki/File:Freediving_in_the_Sea_of_Cortez_at_Playa_Balandra_in_La_Paz,_Mexico.jpg) |
-| `dive-reef-*.webp` | 03 下潛 | jqpubliq | CC BY 2.0 | [Research Divers in Havana Reef](https://commons.wikimedia.org/wiki/File:Research_Divers_in_Havana_Reef.jpg) |
-| `deep-blue-*.webp` | 04 深藍 | Diego Delso | CC BY-SA 4.0 | [Tiburón azul y submarinista, islas Azores](https://commons.wikimedia.org/wiki/File:Tibur%C3%B3n_azul_(Prionace_glauca)_y_submarinista,_canal_Fayal-Pico,_islas_Azores,_Portugal,_2020-07-27,_DD_08.jpg) |
+| 模型 | 作者 | 授權 | 出處 |
+|---|---|---|---|
+| Diver | ucdavisterc | CC BY 4.0 | [Sketchfab](https://sketchfab.com/3d-models/9a415258dec4449c9faf28f11a5b6831) |
+| Animated Swimming Tropical Fish School Loop | LasquetiSpice | CC BY 4.0 | [Sketchfab](https://sketchfab.com/3d-models/62ccf83b35c744d7b5ffb7be80d4ea99) |
+| Atlantic Mackerel (Animated and Game-ready) | 1shxxn | CC BY 4.0 | [Sketchfab](https://sketchfab.com/3d-models/eca6071c26fc4013b8c94a3f37a434c7) |
+| Model 53A - Flatback Sea Turtle | DigitalLife3D | CC BY 4.0 | [Sketchfab](https://sketchfab.com/3d-models/442372b7f02b4730882d41d959726156) |
+| Scalloped Hammerhead Juvenile (LOW POLY) | sharkingaround | CC BY 4.0 | [Sketchfab](https://sketchfab.com/3d-models/f5adc17c922b48feae76aaea98552dd4) |
+| Anglerfish | Abby_Holzworth1 | CC BY 4.0 | [Sketchfab](https://sketchfab.com/3d-models/5e2f4b2d2e1a4613a008b6caaf40d50c) |
+| Crystal Jellyfish (Leptomedusae) | n- | CC BY 4.0 | [Sketchfab](https://sketchfab.com/3d-models/38ac0d91213d447eb3366f615298ce8f) |
 
-授權條文：
-[CC BY 2.0](https://creativecommons.org/licenses/by/2.0/) ·
-[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)
+授權條文：[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+
+模型原始檔各自帶著來源 DCC 軟體的單位（不一定是公尺），縮放係數與動畫
+片段名稱的換算記錄在 `models.ts` 每一筆的註解裡，不在這裡重複。
+
+（舊版五張首頁照片的授權記錄已隨照片一起移除；照片來源紀錄留在 commit
+`d8def41` 的備份裡，需要時可以從那個 commit 找回。）
