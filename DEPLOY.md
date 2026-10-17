@@ -92,7 +92,7 @@ curl -X POST 'https://sea-conditions-api.onrender.com/api/refresh?wait=true'
    - Name：`API_BASE`
    - Value：`https://sea-conditions-api.onrender.com`
 
-   （workflow `.github/workflows/daily-refresh.yml` 已在 repo 裡，每天台灣時間 05:30 / 12:30 跑，
+   （workflow `.github/workflows/daily-refresh.yml` 已在 repo 裡，每 3 小時跑一次（台灣 02、05、08…23 點），
    順便讓 Render 服務保持喚醒。）
 
 ---
@@ -102,7 +102,7 @@ curl -X POST 'https://sea-conditions-api.onrender.com/api/refresh?wait=true'
 - 開 `https://<你的>.vercel.app` → 6 張潛點卡片有真實浪高/風力/水溫（首開若卡一下是 Render 冷啟動）
 - 點任一潛點 → 未來 4 天、潮汐時間有值
 - 手機開同一個網址 → 單欄排版；Safari「加入主畫面」變 app icon
-- GitHub → Actions → 手動觸發一次「每日更新海況」→ 綠勾
+- GitHub → Actions → 手動觸發一次「定時更新海況（每 3 小時）」→ 綠勾
 
 ---
 
