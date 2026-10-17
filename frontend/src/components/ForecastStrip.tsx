@@ -9,6 +9,8 @@ import {
 } from "@/lib/sea";
 import { isoPlusDays, todayInTaipei, updatedLabel } from "@/lib/format";
 import type { Condition } from "@/lib/types";
+import Freshness from "@/components/Freshness";
+import SlotStrip from "@/components/SlotStrip";
 
 const WEEKDAY = ["日", "一", "二", "三", "四", "五", "六"];
 
@@ -38,9 +40,11 @@ function Cell({ k, v, sub }: { k: string; v: string; sub?: string }) {
 export default function ForecastStrip({
   days,
   activity = "dive",
+  activities,
 }: {
   days: Condition[];
   activity?: ActivityKind;
+  activities?: string[];
 }) {
   if (days.length === 0) return null;
 
@@ -74,6 +78,9 @@ export default function ForecastStrip({
                 {c.advice_text && (
                   <p className="mb-3 text-sm leading-relaxed text-slate-700">{c.advice_text}</p>
                 )}
+                <div className="mb-3">
+                  <SlotStrip c={c} activity={activity} activities={activities} />
+                </div>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   <Cell
                     k="浪高"
