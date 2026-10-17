@@ -1,4 +1,8 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
+import AppChrome from "@/components/AppChrome";
+import { getLocations } from "@/lib/api";
+import type { Location } from "@/lib/types";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -14,35 +18,39 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+// 側欄要用到地區清單（連結 + 當日燈號），在這裡（server component）抓一次
+// 往下傳給 client 的 AppChrome／Sidebar，側欄本身不再自己發 client fetch。
+// 跟 /explore、/spots/[slug] 各自的 fetch 是同一支 API，Next 在同一次
+// render 內會自動去重，不會真的打兩次後端。
+async function fetchSidebarLocations(): Promise<Location[]> {
+  try {
+    return await getLocations();
+  } catch {
+    return [];
+  }
+}
+
+function ChromeFallback({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="min-h-screen px-4 pt-6 sm:px-6"
+      style={{ paddingBottom: "calc(4rem + env(safe-area-inset-bottom))" }}
+    >
+      {children}
+    </div>
+  );
+}
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const locations = await fetchSidebarLocations();
+
   return (
     <html lang="zh-Hant">
       <body>
-        <div
-          className="mx-auto min-h-screen max-w-5xl px-4 pt-6 sm:px-6"
-          style={{ paddingBottom: "calc(4rem + env(safe-area-inset-bottom))" }}
-        >
-          <header className="mb-6 flex items-center justify-between">
-            <a href="/" className="flex items-center gap-2">
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path
-                  d="M2 15c2 0 2-1.6 4-1.6S8 15 10 15s2-1.6 4-1.6S16 15 18 15s2-1.6 4-1.6M2 19c2 0 2-1.6 4-1.6S8 19 10 19s2-1.6 4-1.6S16 19 18 19s2-1.6 4-1.6M6 9.5C6 6 8.5 4 12 4s5.5 2.4 5.5 5.5"
-                  stroke="#0284c7"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                />
-              </svg>
-              <span className="text-lg font-bold text-slate-900">海況去不去</span>
-            </a>
-            <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700">
-              台灣潛點 · MVP
-            </span>
-          </header>
-          {children}
-          <footer className="mt-12 border-t border-slate-200 pt-6 text-center text-xs text-slate-400">
-            海況資料僅供參考，下水前請以現場狀況與官方沿岸預報為準。
-          </footer>
-        </div>
+        {/* AppChrome 用 useSearchParams 讀 ?activity=，Next 14 要求外層要有 Suspense */}
+        <Suspense fallback={<ChromeFallback>{children}</ChromeFallback>}>
+          <AppChrome locations={locations}>{children}</AppChrome>
+        </Suspense>
       </body>
     </html>
   );

@@ -14,15 +14,23 @@ import { updatedLabel } from "@/lib/format";
 import { directionsUrl } from "@/lib/nav";
 import {
   ACTIVITY_KIND_ZH,
+  parseActivity,
   primaryActivity,
   RATING_HEX,
   ratingFor,
   reasonsFor,
+  supportsActivity,
 } from "@/lib/sea";
 
 export const dynamic = "force-dynamic";
 
-export default async function SpotPage({ params }: { params: { slug: string } }) {
+export default async function SpotPage({
+  params,
+  searchParams,
+}: {
+  params: { slug: string };
+  searchParams: { activity?: string };
+}) {
   let location;
   try {
     location = await getLocation(params.slug);
@@ -33,13 +41,22 @@ export default async function SpotPage({ params }: { params: { slug: string } })
 
   const today = location.forecast[0] ?? location.today ?? null;
   const rest = location.forecast.slice(1);
-  const primary = primaryActivity(location.activities);
+  // 主燈號跟著使用者選的活動別走；這個地區不支援該活動時才退回預設主活動，
+  // 免得從衝浪地圖點進來卻看到潛水的燈號。下方 dive / surf 對照不受影響。
+  const selected = parseActivity(searchParams.activity);
+  const primary = supportsActivity(location.activities, selected)
+    ? selected
+    : primaryActivity(location.activities);
   const reasons = today ? reasonsFor(today, primary) : [];
   const col = today ? RATING_HEX[ratingFor(today, primary)] : null;
 
   return (
-    <main className="space-y-5">
-      <Link href="/" className="inline-flex items-center gap-1 text-sm text-sky-600 hover:underline">
+    <main className="mx-auto max-w-4xl space-y-5">
+      {/* 帶著 activity 回去，否則從衝浪地圖點進來、按返回會掉回潛水模式 */}
+      <Link
+        href={`/explore?activity=${selected}`}
+        className="inline-flex items-center gap-1 text-sm text-sky-600 hover:underline"
+      >
         <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
           <path d="M12 5l-5 5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>

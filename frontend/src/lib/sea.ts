@@ -62,6 +62,13 @@ export function ratingOf(r: Rating | null | undefined): Rating {
 
 export type ActivityKind = "dive" | "surf";
 
+// 放在這裡而不是 useActivity.ts：那支標了 "use client"，server component 從
+// client 模組 import 拿到的是 client reference 而不是函式，呼叫會在執行期炸掉
+// （build 抓不到，因為 /explore 是動態路由、建置時不會執行）。
+export function parseActivity(raw: string | null | undefined): ActivityKind {
+  return raw === "surf" ? "surf" : "dive";
+}
+
 export const ACTIVITY_KIND_ZH: Record<ActivityKind, string> = {
   dive: "潛水",
   surf: "衝浪",
@@ -80,6 +87,16 @@ export function hasBothKinds(activities: string[] | null | undefined): boolean {
   const acts = activities ?? [];
   const diveLike = acts.some((a) => a === "scuba" || a === "freedive" || a === "snorkel");
   return acts.includes("surf") && diveLike;
+}
+
+/** 這個地區支不支援某個活動別：潛水看 scuba/freedive/snorkel，衝浪看 surf。 */
+export function supportsActivity(
+  activities: string[] | null | undefined,
+  kind: ActivityKind,
+): boolean {
+  const acts = activities ?? [];
+  if (kind === "surf") return acts.includes("surf");
+  return acts.some((a) => a === "scuba" || a === "freedive" || a === "snorkel");
 }
 
 /** 取某活動別的燈號；舊資料沒有 ratings 就退回相容欄位 rating。 */
