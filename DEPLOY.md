@@ -167,7 +167,7 @@ Render 的 `alembic upgrade head` 只會跑 baseline 之後的遷移（例如新
 「部署成功」。
 
 遷移鏈：`81e1c67e1b76`(baseline) → `494e5460a629`(wave_dir) →
-`474f847fb5b2`(spots 表) → `97df58913f05`(ratings)＝ head。
+`474f847fb5b2`(spots 表) → `97df58913f05`(ratings) → `a1c3e5f7b9d2`(slots)＝ head。
 
 ### 步驟 1：確認 Supabase 現況
 
@@ -203,7 +203,7 @@ export DATABASE_URL='postgresql+psycopg://postgres.<ref>:<密碼>@aws-0-ap-south
 .venv/bin/alembic current          # 應為空
 .venv/bin/alembic stamp 81e1c67e1b76
 .venv/bin/alembic upgrade head     # 也可以留給 Render 的 CMD 跑
-.venv/bin/alembic current          # 應顯示 97df58913f05 (head)
+.venv/bin/alembic current          # 應顯示 a1c3e5f7b9d2 (head)
 ```
 
 ### 步驟 3：讓 Render 重新部署
