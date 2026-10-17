@@ -98,8 +98,9 @@ export function DiveSurfContrastInfo() {
   );
 }
 
-const CLOCK_TICKS = Array.from({ length: 12 }, (_, i) => i);
-const UPDATE_TICKS = [7, 19]; // 約清晨、傍晚各更新一次
+// 24 小時錶面；台灣時間 02、05、08…23 點各更新一次（每 3 小時，共 8 次）
+const CLOCK_TICKS = Array.from({ length: 24 }, (_, i) => i);
+const UPDATE_TICKS = CLOCK_TICKS.filter((h) => (h - 2) % 3 === 0);
 
 export function UpdateRhythmInfo() {
   return (
@@ -108,7 +109,7 @@ export function UpdateRhythmInfo() {
         <circle cx="50" cy="50" r="44" fill="none" stroke="#7dd3fc" strokeOpacity="0.35" strokeWidth="2" />
         {CLOCK_TICKS.map((h) => {
           const isUpdate = UPDATE_TICKS.includes(h);
-          const a = (h / 12) * Math.PI * 2 - Math.PI / 2;
+          const a = (h / 24) * Math.PI * 2 - Math.PI / 2;
           const r1 = isUpdate ? 34 : 38;
           const x1 = 50 + Math.cos(a) * r1;
           const y1 = 50 + Math.sin(a) * r1;
@@ -123,27 +124,27 @@ export function UpdateRhythmInfo() {
               y2={y2}
               stroke={isUpdate ? "#7dd3fc" : "#7dd3fc"}
               strokeOpacity={isUpdate ? 0.95 : 0.3}
-              strokeWidth={isUpdate ? 3 : 1.5}
+              strokeWidth={isUpdate ? 3 : 1.2}
               strokeLinecap="round"
             />
           );
         })}
         {UPDATE_TICKS.map((h) => {
-          const a = (h / 12) * Math.PI * 2 - Math.PI / 2;
+          const a = (h / 24) * Math.PI * 2 - Math.PI / 2;
           const cx = 50 + Math.cos(a) * 44;
           const cy = 50 + Math.sin(a) * 44;
           return (
             <g key={h} transform={`translate(${cx} ${cy})`}>
-              <circle r="7" fill="none" stroke="#7dd3fc" strokeWidth="1.5" className="update-pulse" />
-              <circle r="3.5" fill="#e0f2fe" />
+              <circle r="6" fill="none" stroke="#7dd3fc" strokeWidth="1.5" className="update-pulse" />
+              <circle r="3" fill="#e0f2fe" />
             </g>
           );
         })}
         <circle cx="50" cy="50" r="2.5" fill="#e0f2fe" />
       </svg>
-      <h3 className="mt-3 text-lg font-bold text-white sm:text-xl">資料一天更新兩次</h3>
+      <h3 className="mt-3 text-lg font-bold text-white sm:text-xl">逐時預報，每 3 小時更新</h3>
       <p className="mt-1 text-sm leading-relaxed text-sky-100/90">
-        早晚各一次，出發前先看最新的海況。
+        早上就看得到下午的浪和風，出發前再看一次最新版。
       </p>
     </div>
   );

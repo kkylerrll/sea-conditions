@@ -68,8 +68,8 @@ export default function HomePage() {
           </Chapter>
 
           <Chapter at={3}>
-            <h2 className="chapter-title">資料一天更新兩次</h2>
-            <p className="chapter-body">早晚各一次，出發前看到的都是最新的那一版。</p>
+            <h2 className="chapter-title">逐時預報，每 3 小時更新</h2>
+            <p className="chapter-body">早上就看得到下午的浪和風，出發前再看一次最新版。</p>
             <div className="chapter-figure">
               <UpdateRhythmInfo />
             </div>
