@@ -277,7 +277,7 @@ DiveCanvas z-index:0 → dive-scrim z-index:1 → 章節文字 z-index:2 → 深
 | 00 | THE SURFACE | 0m | 海況去不去 |
 | 01 | THE REEF | ～8m 附近 | 同一道浪，兩種答案 |
 | 02 | THE SCHOOL | ～20m 附近 | 全台海況，一次看完 |
-| 03 | THE DROP | ～35m 附近 | 資料一天更新兩次 |
+| 03 | THE DROP | ～35m 附近 | 逐時預報，每 3 小時更新 |
 | 04 | THE ABYSS | 深海（1000m） | 下水前，先看今天的海況 |
 
 ---
