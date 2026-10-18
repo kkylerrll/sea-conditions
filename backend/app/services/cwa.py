@@ -68,10 +68,10 @@ def _find_tide_kind(d: dict) -> Optional[str]:
     return None
 
 
-def fetch_tide_schedule(station_name: Optional[str], timeout: float = 20.0) -> dict[str, dict]:
+def fetch_tide_schedule(station_name: Optional[str], timeout: float = 20.0, strict: bool = False) -> dict[str, dict]:
     """回傳 {date_iso: {"tide_high": "05:12 / 17:40", "tide_low": "11:20 / 23:50"}}。
 
-    抓不到就回傳空 dict。整月資料一次抓回，呼叫端自己挑日期。
+    抓不到就回傳空 dict（strict=True 時請求失敗改為拋出例外，供 refresh 統計失敗數）。整月資料一次抓回，呼叫端自己挑日期。
     """
 
     if not _enabled() or not station_name:
@@ -93,6 +93,8 @@ def fetch_tide_schedule(station_name: Optional[str], timeout: float = 20.0) -> d
             payload = resp.json()
     except Exception as exc:  # noqa: BLE001
         log.warning("CWA 潮汐抓取失敗（%s）：%s", station_name, exc)
+        if strict:
+            raise
         return {}
 
     if not _SAMPLE_DUMP.exists():

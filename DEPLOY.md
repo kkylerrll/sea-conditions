@@ -5,11 +5,11 @@
 瀏覽器 → │  Vercel     │  fetch  │  Render (新加坡)  │  SQL    │  Supabase      │
 手機   → │  前端 Next  │ ──────► │  後端 FastAPI     │ ──────► │  Postgres      │
         └─────────────┘         └──────────────────┘         └────────────────┘
-                                        ▲
-                                        │ 每天 POST /api/refresh
-                                ┌───────────────────┐
-                                │ GitHub Actions cron│
-                                └───────────────────┘
+                                                                      ▲
+                                                                      │ 每 3 小時直接寫入
+                                                            ┌───────────────────┐
+                                                            │ GitHub Actions cron│
+                                                            └───────────────────┘
 ```
 
 三個平台都有免費方案、都不需信用卡（原本規劃的 Fly 需綁卡，改用 Render）。
@@ -87,13 +87,33 @@ curl -X POST 'https://sea-conditions-api.onrender.com/api/refresh?wait=true'
    Render → `sea-conditions-api` → **Environment** → 把 `CORS_ORIGINS` 改成你的 Vercel 網址
    （例：`https://sea-conditions.vercel.app`）→ 存檔（會自動重部署）
 
-2. **每日自動更新**：
-   GitHub repo → **Settings → Secrets and variables → Actions → Variables 分頁 → New repository variable**
-   - Name：`API_BASE`
-   - Value：`https://sea-conditions-api.onrender.com`
+2. **定時更新海況（GitHub Actions 直接寫 DB）**：
+   `.github/workflows/daily-refresh.yml` 每 3 小時（台灣 02、05、08…23 點）在 Actions runner 上跑
+   `python -m app.refresh`，**直接寫入 Supabase**，不再經過 Render 的 `/api/refresh`。
+   （原因：Render 免費方案共用出口 IP，Open-Meteo 疑似對該 IP 限流（429），後端把失敗吞掉、
+   回 `updated_locations:0` 且 HTTP 200，排程照樣綠勾，海況從 2026-10-15 起沒再更新。）
 
-   （workflow `.github/workflows/daily-refresh.yml` 已在 repo 裡，每 3 小時跑一次（台灣 02、05、08…23 點），
-   順便讓 Render 服務保持喚醒。）
+   GitHub repo → **Settings → Secrets and variables → Actions → Secrets** 新增：
+
+   | Secret         | 內容                                                                    |
+   | -------------- | ----------------------------------------------------------------------- |
+   | `DATABASE_URL` | Supabase **pooler** 連線字串（同 Render 那串：`postgresql+psycopg://...pooler.supabase.com:5432/postgres?sslmode=require`） |
+   | `CWA_API_KEY`  | 中央氣象署金鑰（潮汐用；缺少只會沒有潮汐，不會讓排程失敗）               |
+
+   > ⚠️ `DATABASE_URL` 一定要用 **pooler**（`aws-0-…pooler.supabase.com`），不能用直連主機
+   > `db.<ref>.supabase.co`：直連只有 IPv6，GitHub runner 沒有 IPv6，會連不上。
+   > `postgres://` / `postgresql://` 開頭也可以，程式會自動補成 `postgresql+psycopg://`。
+
+   Workflow 設了 `SKIP_MIGRATIONS=1`，refresh 不會對正式 DB 跑 Alembic（遷移只由 Render 部署負責）。
+   舊的 repo variable `API_BASE` 已用不到，可刪除。`/api/refresh` 端點仍保留供手動使用，
+   但它在 Render 上可能一樣被限流；回應現在會帶 `total_locations`、`failed`、`tide_failed`。
+
+   **怎麼看失敗**：
+   - Actions 該次 run 的「抓海況並寫入資料庫」步驟會印出結果 JSON，`failed` 陣列列出每個失敗地點與錯誤
+     （HTTP 錯誤含狀態碼與回應前 200 字；429 就是被限流）。
+   - **全部地點失敗 → job 紅燈**（結束碼 1）；**部分失敗 → 綠燈但有黃色 warning annotation**，列出失敗地點。
+   - 每個 Open-Meteo 請求遇 429／5xx／逾時會等 2 秒重試一次。
+   - 缺 `DATABASE_URL` secret 時第一步就會以中文錯誤訊息失敗。
 
 ---
 
@@ -102,7 +122,7 @@ curl -X POST 'https://sea-conditions-api.onrender.com/api/refresh?wait=true'
 - 開 `https://<你的>.vercel.app` → 6 張潛點卡片有真實浪高/風力/水溫（首開若卡一下是 Render 冷啟動）
 - 點任一潛點 → 未來 4 天、潮汐時間有值
 - 手機開同一個網址 → 單欄排版；Safari「加入主畫面」變 app icon
-- GitHub → Actions → 手動觸發一次「定時更新海況（每 3 小時）」→ 綠勾
+- GitHub → Actions → 手動觸發一次「定時更新海況（每 3 小時）」→ 綠勾，**且 log 裡 `failed` 為 `[]`、`updated_locations` = `total_locations`**
 
 ---
 
@@ -220,6 +240,7 @@ Render Dashboard → `sea-conditions-api` → **Manual Deploy → Deploy latest 
 cd backend
 DATABASE_URL='<同上>' .venv/bin/python -m app.seed
 curl -X POST 'https://sea-conditions-api.onrender.com/api/refresh?wait=true'
+# 或手動觸發 Actions 的「定時更新海況」workflow
 ```
 
 ### 步驟 5：驗收（用 revision-specific 欄位，不要用 /health）

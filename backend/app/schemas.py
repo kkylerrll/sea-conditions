@@ -111,8 +111,17 @@ class LocationWithConditions(LocationOut):
     spot_list: List[SpotOut] = []
 
 
+class RefreshFailure(BaseModel):
+    location: str
+    error: str
+
+
 class RefreshResult(BaseModel):
     updated_locations: int
     days: int
     source: str
     llm: bool
+    # 以下為可見性欄位：背景模式下沒有結果，故皆為選填
+    total_locations: Optional[int] = None
+    failed: List[RefreshFailure] = []
+    tide_failed: Optional[int] = None
