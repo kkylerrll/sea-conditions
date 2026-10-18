@@ -1,7 +1,7 @@
 import HomeExplorer from "@/components/HomeExplorer";
+import Freshness from "@/components/Freshness";
 import RefreshButton from "@/components/RefreshButton";
 import { getLocations } from "@/lib/api";
-import { updatedLabel } from "@/lib/format";
 import { parseActivity } from "@/lib/sea";
 import type { Location } from "@/lib/types";
 
@@ -33,7 +33,6 @@ export default async function ExplorePage({
     .filter(Boolean)
     .sort()
     .pop();
-  const updated = updatedLabel(latest);
 
   return (
     <main>
@@ -45,7 +44,7 @@ export default async function ExplorePage({
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {updated && <span className="text-xs text-slate-400">更新於 {updated}</span>}
+          <Freshness iso={latest} />
           <RefreshButton />
         </div>
       </div>

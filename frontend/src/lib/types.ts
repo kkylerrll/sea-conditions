@@ -12,6 +12,22 @@ export interface Ratings {
   surf: ActivityRating | null;
 }
 
+// 白天 4 個時段（early 06–09／morning 09–12／afternoon 12–15／evening 15–18）
+export interface Slot {
+  key: "early" | "morning" | "afternoon" | "evening";
+  label: string;
+  start: string; // "06:00"
+  end: string; // "09:00"
+  wave_height_m: number | null;
+  wave_period_s: number | null;
+  wave_dir: string | null;
+  wind_speed_ms: number | null;
+  wind_scale: number | null;
+  wind_dir: string | null;
+  gust_ms: number | null;
+  ratings?: Ratings | null;
+}
+
 export interface Condition {
   date: string;
   source: string;
@@ -31,6 +47,7 @@ export interface Condition {
   rating_score: number | null;
   rating_reasons: string[];
   ratings?: Ratings | null;
+  slots?: Slot[] | null;
   advice_text: string | null;
   advice_model: string | null;
 }

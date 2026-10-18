@@ -132,6 +132,11 @@ class DailyCondition(Base):
     rating_reasons: Mapped[list] = mapped_column(JSON, default=list)
     ratings: Mapped[Optional[dict]] = mapped_column(JSON)
 
+    # 白天 4 個時段（早上/上午/下午/傍晚）的逐時彙整與各自燈號；缺逐時資料就是 NULL。
+    # 形狀：[{key,label,start,end,wave_height_m,wave_period_s,wave_dir,wind_speed_ms,
+    #        wind_scale,wind_dir,gust_ms,ratings:{dive:{...},surf:{...}}}, ...]
+    slots: Mapped[Optional[list]] = mapped_column(JSON)
+
     # AI 建議（第四步）
     advice_text: Mapped[Optional[str]] = mapped_column(Text)
     advice_model: Mapped[Optional[str]] = mapped_column(String(40))

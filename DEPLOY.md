@@ -92,7 +92,7 @@ curl -X POST 'https://sea-conditions-api.onrender.com/api/refresh?wait=true'
    - Name：`API_BASE`
    - Value：`https://sea-conditions-api.onrender.com`
 
-   （workflow `.github/workflows/daily-refresh.yml` 已在 repo 裡，每天台灣時間 05:30 / 12:30 跑，
+   （workflow `.github/workflows/daily-refresh.yml` 已在 repo 裡，每 3 小時跑一次（台灣 02、05、08…23 點），
    順便讓 Render 服務保持喚醒。）
 
 ---
@@ -102,7 +102,7 @@ curl -X POST 'https://sea-conditions-api.onrender.com/api/refresh?wait=true'
 - 開 `https://<你的>.vercel.app` → 6 張潛點卡片有真實浪高/風力/水溫（首開若卡一下是 Render 冷啟動）
 - 點任一潛點 → 未來 4 天、潮汐時間有值
 - 手機開同一個網址 → 單欄排版；Safari「加入主畫面」變 app icon
-- GitHub → Actions → 手動觸發一次「每日更新海況」→ 綠勾
+- GitHub → Actions → 手動觸發一次「定時更新海況（每 3 小時）」→ 綠勾
 
 ---
 
@@ -167,7 +167,7 @@ Render 的 `alembic upgrade head` 只會跑 baseline 之後的遷移（例如新
 「部署成功」。
 
 遷移鏈：`81e1c67e1b76`(baseline) → `494e5460a629`(wave_dir) →
-`474f847fb5b2`(spots 表) → `97df58913f05`(ratings)＝ head。
+`474f847fb5b2`(spots 表) → `97df58913f05`(ratings) → `a1c3e5f7b9d2`(slots)＝ head。
 
 ### 步驟 1：確認 Supabase 現況
 
@@ -203,7 +203,7 @@ export DATABASE_URL='postgresql+psycopg://postgres.<ref>:<密碼>@aws-0-ap-south
 .venv/bin/alembic current          # 應為空
 .venv/bin/alembic stamp 81e1c67e1b76
 .venv/bin/alembic upgrade head     # 也可以留給 Render 的 CMD 跑
-.venv/bin/alembic current          # 應顯示 97df58913f05 (head)
+.venv/bin/alembic current          # 應顯示 a1c3e5f7b9d2 (head)
 ```
 
 ### 步驟 3：讓 Render 重新部署

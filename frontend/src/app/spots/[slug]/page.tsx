@@ -10,6 +10,8 @@ import {
   WindCompass,
 } from "@/components/SeaVisuals";
 import SpotList from "@/components/SpotList";
+import Freshness from "@/components/Freshness";
+import SlotStrip from "@/components/SlotStrip";
 import { getLocation } from "@/lib/api";
 import { updatedLabel } from "@/lib/format";
 import { directionsUrl } from "@/lib/nav";
@@ -99,6 +101,14 @@ export default async function SpotPage({
 
           <ActivityRatings c={today} activities={location.activities} />
 
+          <Freshness iso={today.fetched_at} className="block" />
+
+          {today.slots && today.slots.length > 0 && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <SlotStrip c={today} activity={primary} activities={location.activities} />
+            </div>
+          )}
+
           {today.advice_text && (
             <div
               className="rounded-2xl border bg-white p-4 text-sm leading-relaxed text-slate-700 shadow-sm"
@@ -131,7 +141,7 @@ export default async function SpotPage({
             {today.advice_model ? ` · 建議由 ${today.advice_model} 生成` : " · 建議為系統模板"}
           </p>
 
-          <ForecastStrip days={rest} activity={primary} />
+          <ForecastStrip days={rest} activity={primary} activities={location.activities} />
         </>
       )}
 

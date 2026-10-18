@@ -35,7 +35,27 @@ def _fmt(v, unit: str = "") -> str:
     return f"{v}{unit}" if v is not None else "無資料"
 
 
+def best_slot_sentence(c: dict, activity: str) -> str:
+    """有時段資料時，點名主要活動燈號最好的時段；全部不建議或沒資料就不說。"""
+    best = None
+    for sl in c.get("slots") or []:
+        r = ((sl.get("ratings") or {}).get(activity)) or {}
+        if r.get("score") is None or r.get("rating") == "red":
+            continue
+        if best is None or r["score"] > best[0]:  # 同分取較早的時段
+            best = (r["score"], sl)
+    if best is None:
+        return ""
+    sl = best[1]
+    return f"最適合的時段：{sl['label']}（{sl['start'][:2]}–{sl['end'][:2]}）。"
+
+
 def _template(location_name: str, c: dict, activity: str = "dive") -> str:
+    text = _base_template(location_name, c, activity)
+    return text + best_slot_sentence(c, activity)
+
+
+def _base_template(location_name: str, c: dict, activity: str = "dive") -> str:
     rating = c.get("rating", "unknown")
     wh = c.get("wave_height_m")
     ws = c.get("wind_scale")

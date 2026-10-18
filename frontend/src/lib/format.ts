@@ -27,3 +27,19 @@ export function updatedLabel(iso: string | null | undefined): string | null {
     hour12: false,
   });
 }
+
+/** 資料新鮮度：time = 更新時間（台北，當天只顯示 HH:MM，跨日加月/日）；stale = 超過 6 小時。 */
+export function freshness(iso: string | null | undefined): { time: string; stale: boolean } | null {
+  if (!iso) return null;
+  const d = new Date(iso.endsWith("Z") || iso.includes("+") ? iso : iso + "Z");
+  if (Number.isNaN(d.getTime())) return null;
+  const fmt = (o: Intl.DateTimeFormatOptions) =>
+    d.toLocaleString("zh-TW", { timeZone: "Asia/Taipei", hour12: false, ...o });
+  const hhmm = fmt({ hour: "2-digit", minute: "2-digit" });
+  const sameDay =
+    new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Taipei" }).format(d) === todayInTaipei();
+  return {
+    time: sameDay ? hhmm : `${fmt({ month: "numeric", day: "numeric" })} ${hhmm}`,
+    stale: Date.now() - d.getTime() > 6 * 3600 * 1000,
+  };
+}
