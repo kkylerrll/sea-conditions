@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ForecastStrip from "@/components/ForecastStrip";
+import LiveCams from "@/components/LiveCams";
 import {
   ActivityRatings,
   SeaStateHero,
@@ -143,6 +144,8 @@ export default async function SpotPage({
           <ForecastStrip days={rest} activity={primary} activities={location.activities} />
         </>
       )}
+
+      <LiveCams slug={params.slug} />
     </main>
   );
 }
