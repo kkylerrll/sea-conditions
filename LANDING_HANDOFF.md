@@ -33,6 +33,43 @@
 
 ---
 
+## 第十三輪：從海面開始、緩慢連續下沉（2026-10-20，使用者尚未肉眼確認）
+
+需求：首頁一開始就站在更平靜的海面上，往下捲才慢慢沉進水裡，潛水員與生物在水下才出現；
+不能有場景切換、交叉淡入感。參考 CodePen "Ocean · WebGPU" by hirakujira（MIT）。
+
+**架構（`dive/ocean/`，同一個 three.js 渲染器、同一台攝影機，沒有第二個 canvas）**
+- `config.ts` 所有可調常數（海況、太陽、浮標、水線）。`spectrum.ts` CPU 產生 JONSWAP＋獨立長湧浪的 h0，
+  並提供 CPU 端低通波高取樣（浮標／水線用）。`fftOcean.ts` GPU：時間演化 → 水平／垂直各 log2(N) 個
+  Stockham stage pass（浮點 ping-pong，三個 cascade 並排在 3N×N 圖集）→ 逐 cascade 輸出位移＋泡沫、
+  導數（RGBA16F，帶 mipmap）。`shaders.ts` 全部 GLSL（逐段對照原作 WGSL）。`oceanWorld.ts` 組裝：
+  海面極座標格網、天空穹頂、大氣烘焙、浮標彈簧、水線 uniform。`gerstner.ts` 降級波組。
+- 水線：鏡頭是半徑 `DOME_RADIUS_M` 的防水罩。視線 y 分量在水線以上走空氣側（天空＋由上往下看的海面），
+  以下走水側（水下背景＋由下往上看的 Snell 窗／全反射）。下沉時水線連續掃過畫面，無切換。
+  水下背景改由穹頂依視線方向畫（同一組 `DEPTH_GRADIENT_STOPS` 色票），與舊的畫面漸層在水平視角一致。
+- `depth.ts`：浮標段（0→0.06）→ 三次 Hermite 下沉（→0.22，5 m，C1 接合）→ 指數下潛 5→1000 m
+  （每單位捲動的 ln(深度) 變化率大致固定，沒有舊版三次方暴衝）。`remapLegacyProgress()` 把舊的生物
+  進度區間線性搬進下潛段並夾在 4 m 之後。`environmentDarkness` 改成兩個指數相加（平滑）。
+- `cameraPath.ts`：俯仰角關鍵影格（略低頭 → 下沉時低頭 → 沒入水後抬頭回望 Snell 窗 → 轉水平）、
+  潛水員入場區間（`DIVER_INTRO_*`，從右側外上方游入，位置用螢幕比例反推，不受鏡頭俯仰影響）。
+- `engine.ts`：讀「平滑後進度」（臨界阻尼彈簧，`SCROLL_SMOOTH_TIME`=0.8），章節文字仍吃原始進度；
+  生物 Y 不超過 `CREATURE_CEILING_Y`、氣泡到水面破掉、潛水員不出水面。
+- 降級：沒有 `EXT_color_buffer_float` 或 `isMobileSpec()` → Gerstner×12（同一套 shader）；連半精度可繪製
+  貼圖都沒有 → 不建海面（退回水下版）；海面 shader 編譯失敗 → 自動關掉海面（`onShaderError`）。
+  除錯：網址 `?ocean=gerstner|fft|fft128`。reduced-motion／無 WebGL 仍走 CSS 漸層。
+- CSS：章節軌道 100vh→135vh／章；`.dive-scrim` 隨 `--progress` 由 0.4 淡入到 1；章節 00 文字加柔邊陰影。
+
+**要調的常數**：風速 `WIND`、風區 `FETCH`、`AMP_SCALE`（`ocean/config.ts`，`estimateHs()` 目前約 0.42 m
+= 風浪 0.26＋湧浪 0.32）；FFT 大小（`oceanWorld.ts` N，256／`?ocean=fft128`）；水面段 `SURFACE_HOLD`／
+`SURFACE_END`／`SURFACE_END_DEPTH_M`／`DEEP_K`（`depth.ts`）；平滑 `SCROLL_SMOOTH_TIME`（`engine.ts`）；
+太陽 `SUN_ELEVATION`／`SUN_AZIMUTH`、雲量 `CLOUD_LO/HI`；泡沫 `FOAM_JAC/GAIN`；`DOME_RADIUS_M`。
+
+**驗證狀況（誠實）**：tsc、build 通過；GLSL 以 glslangValidator 檢查語法通過；FFT index 數學與浮標取樣用
+CPU 模擬對照直接 DFT（誤差 ~1e-16／1e-9）。**沒有在真實 GPU 上跑過、沒有看過畫面**——
+水線、Snell 窗亮度、天空色調、泡沫量、鏡頭劇本（`PITCH_KEYS`）都需要使用者肉眼調。
+
+---
+
 ## 一、使用者要的是什麼，以及三輪回饋
 
 **核心要求：捲動的時候，看到的是同一個潛水員持續下潛，不同深度出現不同魚

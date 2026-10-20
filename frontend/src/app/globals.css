@@ -74,15 +74,20 @@ body {
      用三次方 easing 擠進剩下的 35%——深的地方色標間距本來就比較密集
      （DEPTH_GRADIENT_STOPS 選的深度點本身是疏密不均的 0/5/10/20/40/
      100/300/1000），換算成百分比之後間距自然也不均,不需要另外手調。 */
+  /* round 13：最上面 10% 是天空與海平面（首頁一開始是站在海面上），其餘色標
+     是原本的水下漸層壓縮進剩下的 90%（位置 = 10% + 0.9 × 原百分比）。 */
   background: linear-gradient(
     180deg,
-    #4dc2e8 0%,
-    #32b0de 8.13%,
-    #1c98d3 16.25%,
-    #1175b5 32.5%,
-    #0a4d85 65%,
-    #052e53 78.89%,
-    #031428 87.65%,
+    #7db6e8 0%,
+    #bcd9ee 6%,
+    #d9ecf5 9.4%,
+    #4dc2e8 10%,
+    #32b0de 17.3%,
+    #1c98d3 24.6%,
+    #1175b5 39.3%,
+    #0a4d85 68.5%,
+    #052e53 81%,
+    #031428 88.9%,
     #02060d 100%
   );
 }
@@ -91,7 +96,10 @@ body {
 
 /* 未啟用時就是一般容器；啟用後長度＝章節數 × 一屏，舞台在裡面 sticky 住。 */
 .progress-armed .chapter-track {
-  height: calc(var(--chapters, 5) * 100vh);
+  /* round 13：每章 135vh（原本 100vh）。首頁現在從海面開始、緩緩沉入水中，整趟下潛
+     拉長，捲動的每一下對應的畫面變化小一點，才是「慢慢往下」而不是一下就換景。
+     章節文字的淡入淡出吃 --progress（0→1），跟總長度無關，五章仍然各自讀得完。 */
+  height: calc(var(--chapters, 5) * 135vh);
 }
 
 .chapter-stage {
@@ -196,6 +204,13 @@ body {
     linear-gradient(180deg, transparent 0%, transparent 75%, rgba(2, 6, 13, 0.3) 100%);
 }
 
+/* round 13：首頁一開始是海面，墊底的暗化要非常淡（看得到海），隨捲動進度加深到原本的
+   強度——捲到 --progress ≈ 0.18（剛沉進水裡）就是 100%。只在捲動版啟用，沒有 JS 的
+   靜態長頁維持原本強度。 */
+.progress-armed .dive-scrim {
+  opacity: clamp(0.4, calc(0.4 + var(--progress, 0) * 3.4), 1);
+}
+
 @media (min-width: 1024px) {
   .dive-scrim {
     /* 文字欄在左半邊（見下面 .chapter-inner 的 margin-left/width），暗化
@@ -224,6 +239,10 @@ body {
   align-items: center;
   text-align: center;
   color: #fff;
+}
+/* 章節 00 的文字壓在天空與海面上（暗化墊底很淡），加一圈同色系的柔邊陰影保證讀得到。 */
+.progress-armed .chapter[data-chapter-at="0"] .chapter-inner {
+  text-shadow: 0 1px 14px rgba(3, 40, 78, 0.6), 0 0 3px rgba(3, 40, 78, 0.4);
 }
 .progress-armed .chapter-inner {
   opacity: var(--vis2);

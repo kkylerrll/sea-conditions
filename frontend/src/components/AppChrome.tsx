@@ -76,6 +76,9 @@ export default function AppChrome({
               首頁 3D 模型：ucdavisterc、LasquetiSpice、1shxxn、DigitalLife3D、sharkingaround、
               Abby_Holzworth1、n-（CC BY 4.0），來源 Sketchfab。
             </p>
+            <p className="mt-1 opacity-70">
+              海面：Ocean · WebGPU by hirakujira (CodePen, MIT)。
+            </p>
           </footer>
         </div>
       </div>

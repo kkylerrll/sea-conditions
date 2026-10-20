@@ -27,3 +27,11 @@ CC BY 4.0 要求標示原作者，所以下面這張表不能刪；同一份標�
 
 （舊版五張首頁照片的授權記錄已隨照片一起移除；照片來源紀錄留在 commit
 `d8def41` 的備份裡，需要時可以從那個 commit 找回。）
+
+## 海面與天空（第 13 輪）
+
+首頁一開始的海面（FFT 海浪、大氣天空、雲層、浮標鏡頭的做法）移植自
+**Ocean · WebGPU by hirakujira (CodePen, MIT)**：<https://codepen.io/hirakujira/pen/EaWLEEB>。
+原作是 WebGPU compute shader 版本；`src/components/landing/dive/ocean/` 把它改寫成
+three.js / WebGL2（fragment shader 做 FFT），並加上水線、Snell 窗等水下視角。
+CodePen 公開作品採 MIT 授權。
