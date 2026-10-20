@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,6 +19,16 @@ class Settings(BaseSettings):
     llm_model: str = "claude-opus-5"
 
     cors_origins: str = "http://localhost:3000"
+
+    @field_validator("database_url")
+    @classmethod
+    def _normalize_database_url(cls, v: str) -> str:
+        # Supabase / Heroku 風格的 postgres:// 或 postgresql:// 預設會找 psycopg2，
+        # 但專案裝的是 psycopg3，統一補成 postgresql+psycopg://
+        for prefix in ("postgres://", "postgresql://"):
+            if v.startswith(prefix):
+                return "postgresql+psycopg://" + v[len(prefix):]
+        return v
 
     @property
     def cors_origin_list(self) -> list[str]:

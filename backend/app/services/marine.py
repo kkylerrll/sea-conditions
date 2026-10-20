@@ -14,6 +14,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import math
+import time
 
 import httpx
 
@@ -112,6 +113,27 @@ def _estimate_visibility_m(wave_height_m: float | None) -> float | None:
     return round(max(3.0, 16.0 - wave_height_m * 6.0), 1)
 
 
+_RETRY_BACKOFF_S = 2.0
+
+
+def _get_with_retry(client: httpx.Client, url: str, params: dict) -> dict:
+    """GET → JSON。遇 429 / 5xx / 逾時 / 連線錯誤只重試一次（等 2 秒），其他直接拋。"""
+    for attempt in (1, 2):
+        try:
+            resp = client.get(url, params=params)
+            resp.raise_for_status()
+            return resp.json()
+        except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError) as exc:
+            retryable = not isinstance(exc, httpx.HTTPStatusError) or (
+                exc.response.status_code == 429 or exc.response.status_code >= 500
+            )
+            if attempt == 2 or not retryable:
+                raise
+            log.warning("Open-Meteo 請求失敗（%s），%.0f 秒後重試一次", type(exc).__name__, _RETRY_BACKOFF_S)
+            time.sleep(_RETRY_BACKOFF_S)
+    raise RuntimeError("unreachable")
+
+
 def fetch_daily(lat: float, lon: float, days: int = 4, timeout: float = 15.0) -> list[dict]:
     """回傳從今天起 `days` 天、每天一筆的海況 dict（已含 source="openmeteo"）。"""
 
@@ -135,12 +157,8 @@ def fetch_daily(lat: float, lon: float, days: int = 4, timeout: float = 15.0) ->
     }
 
     with httpx.Client(timeout=timeout) as client:
-        marine = client.get(_MARINE_URL, params=marine_params)
-        marine.raise_for_status()
-        marine = marine.json()
-        forecast = client.get(_FORECAST_URL, params=forecast_params)
-        forecast.raise_for_status()
-        forecast = forecast.json()
+        marine = _get_with_retry(client, _MARINE_URL, marine_params)
+        forecast = _get_with_retry(client, _FORECAST_URL, forecast_params)
 
     md = marine.get("daily", {}) or {}
     fd = forecast.get("daily", {}) or {}
