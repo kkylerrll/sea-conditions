@@ -14,10 +14,26 @@ body {
 /* 「清爽海灘」共用樣式：極簡卡片 + 細藍線段落標題 */
 @layer components {
   .card-clean {
-    @apply rounded-2xl border border-ocean-100 bg-white shadow-[0_1px_3px_rgba(11,111,164,0.07)];
+    @apply rounded-2xl border border-ocean-100 bg-white shadow-soft;
+  }
+  /* 深海 hero：探索頁頂部與詳情頁頭共用 */
+  .hero-ocean {
+    background:
+      radial-gradient(60% 90% at 88% 0%, rgba(255, 196, 140, 0.38) 0%, rgba(255, 196, 140, 0) 60%),
+      radial-gradient(50% 70% at 0% 100%, rgba(56, 188, 217, 0.35) 0%, rgba(56, 188, 217, 0) 65%),
+      linear-gradient(135deg, #052a45 0%, #0a4a73 48%, #0b6fa4 100%);
+  }
+  .lift-hover {
+    @apply transition duration-200 ease-out motion-reduce:transition-none;
+  }
+  @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+    .lift-hover:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 2px 4px rgba(9, 90, 134, 0.08), 0 10px 24px rgba(9, 90, 134, 0.12), 0 24px 48px rgba(9, 90, 134, 0.12);
+    }
   }
   .section-title {
-    @apply mb-3 border-b border-ocean-200 pb-2 text-sm font-semibold tracking-wide text-ocean-700;
+    @apply mb-4 flex items-center gap-2.5 text-lg font-bold tracking-tight text-abyss-800 before:h-5 before:w-1 before:rounded-full before:bg-coral-400 sm:text-xl;
   }
 }
 
@@ -651,4 +667,42 @@ html.landing-no-scrollbar body {
 html.landing-no-scrollbar::-webkit-scrollbar,
 html.landing-no-scrollbar body::-webkit-scrollbar {
   display: none;
+}
+
+/* 地圖預覽卡：桌機浮在 pin 旁（依 pin 在左／右半邊決定開哪一側），手機固定在地圖底部 */
+.map-pop {
+  position: absolute;
+  z-index: 20;
+  left: 0.5rem;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  animation: map-pop-in 220ms ease-out both;
+}
+@media (min-width: 640px) {
+  .map-pop {
+    width: 19rem;
+    right: auto;
+    bottom: auto;
+    left: calc(var(--px) + 26px);
+    top: clamp(8px, calc(var(--py) - 120px), calc(100% - 340px));
+  }
+  .map-pop[data-side="l"] {
+    left: auto;
+    right: calc(100% - var(--px) + 26px);
+  }
+}
+@keyframes map-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .map-pop {
+    animation: none;
+  }
 }

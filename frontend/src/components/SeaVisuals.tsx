@@ -149,7 +149,7 @@ export function ActivityRatings({
 
 /* ══════════ 2. 風羅盤 ══════════ */
 
-export function WindCompass({ c }: { c: Condition }) {
+export function WindCompass({ c, className = "" }: { c: Condition; className?: string }) {
   const deg = windFromDeg(c.wind_dir); // 風「來自」的方位
   const scale = c.wind_scale;
   const arrowLen = scale == null ? 30 : clamp(lerp(24, 52, scale / 7), 24, 52);
@@ -160,8 +160,8 @@ export function WindCompass({ c }: { c: Condition }) {
   const cy = 80;
 
   return (
-    <figure className="card-clean p-4">
-      <figcaption className="text-xs font-semibold tracking-wide text-ocean-700">風</figcaption>
+    <figure className={`card-clean p-4 sm:p-5 ${className}`}>
+      <figcaption className="text-sm font-bold tracking-wide text-ocean-700">風</figcaption>
       <div className="mt-1 flex items-center gap-4">
         <svg viewBox="0 0 160 160" className="h-28 w-28 shrink-0" aria-hidden="true">
           <circle cx={cx} cy={cy} r={R} fill="#FBF8F3" stroke="#B3D6E8" strokeWidth="2" />
@@ -219,13 +219,13 @@ export function WindCompass({ c }: { c: Condition }) {
 
 /* ══════════ 3. 潮汐曲線 ══════════ */
 
-export function TideCurve({ c }: { c: Condition }) {
+export function TideCurve({ c, className = "" }: { c: Condition; className?: string }) {
   const highs = parseTideTimes(c.tide_high, "high");
   const lows = parseTideTimes(c.tide_low, "low");
   const ext = [...highs, ...lows].sort((a, b) => a.minutes - b.minutes);
 
   const W = 380;
-  const H = 150;
+  const H = 162;
   const PADX = 16;
   const BASE = H - 22;
   const yHigh = 34;
@@ -234,8 +234,8 @@ export function TideCurve({ c }: { c: Condition }) {
 
   if (ext.length === 0) {
     return (
-      <figure className="card-clean p-4">
-        <figcaption className="text-xs font-semibold tracking-wide text-ocean-700">潮汐</figcaption>
+      <figure className={`card-clean p-4 sm:p-5 ${className}`}>
+        <figcaption className="text-sm font-bold tracking-wide text-ocean-700">潮汐</figcaption>
         <p className="mt-6 text-center text-sm text-slate-500">此地無潮汐預報資料</p>
       </figure>
     );
@@ -265,8 +265,8 @@ export function TideCurve({ c }: { c: Condition }) {
   const nowX = xOf(nowMinutesTaipei());
 
   return (
-    <figure className="card-clean p-4">
-      <figcaption className="text-xs font-semibold tracking-wide text-ocean-700">潮汐（今日）</figcaption>
+    <figure className={`card-clean p-4 sm:p-5 ${className}`}>
+      <figcaption className="text-sm font-bold tracking-wide text-ocean-700">潮汐（今日）</figcaption>
       <svg viewBox={`0 0 ${W} ${H}`} className="mx-auto mt-1 w-full max-w-[560px]" role="img" aria-label="今日潮汐時間曲線">
         <defs>
           <linearGradient id="tideFill" x1="0" y1="0" x2="0" y2="1">
@@ -332,7 +332,7 @@ export function TideCurve({ c }: { c: Condition }) {
 
 /* ══════════ 4. 水溫計 ══════════ */
 
-export function TempGauge({ c }: { c: Condition }) {
+export function TempGauge({ c, className = "" }: { c: Condition; className?: string }) {
   const t = c.water_temp_c;
   const lo = 16;
   const hi = 32;
@@ -343,7 +343,7 @@ export function TempGauge({ c }: { c: Condition }) {
   const { suit, note } = wetsuitAdvice(t);
 
   return (
-    <figure className="flex gap-4 card-clean p-4">
+    <figure className={`flex gap-4 card-clean p-4 sm:p-5 ${className}`}>
       <svg viewBox="0 0 64 160" className="h-32 w-14 shrink-0" aria-hidden="true">
         <rect x={20} y={tubeTop} width={16} height={tubeBot - tubeTop} rx={8} fill="#EEF6FB" />
         {t != null && (
@@ -362,7 +362,7 @@ export function TempGauge({ c }: { c: Condition }) {
         <rect x={24} y={110} width={8} height={30} fill={t == null ? "#cbd5e1" : "#0B6FA4"} />
       </svg>
       <div className="min-w-0">
-        <figcaption className="text-xs font-semibold tracking-wide text-ocean-700">水溫</figcaption>
+        <figcaption className="text-sm font-bold tracking-wide text-ocean-700">水溫</figcaption>
         <p className="text-2xl font-bold tabular-nums text-slate-800">
           {t == null ? "—" : `${t.toFixed(1)}°C`}
         </p>
