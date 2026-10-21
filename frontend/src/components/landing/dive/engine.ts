@@ -162,7 +162,7 @@ const CREATURE_CEILING_Y = -1.2;
 
 // round 13：引擎讀的捲動進度是原始進度經臨界阻尼彈簧平滑後的值（秒，越大越慢）。
 // 快速甩捲軸時畫面滑過去而不是跳；章節文字不受影響（CSS 吃原始進度）。
-const SCROLL_SMOOTH_TIME = 0.8;
+const SCROLL_SMOOTH_TIME = 0.25;
 // 潛水員入場時最高只到這裡（略低於水面），入場動畫從水面下側邊游進來。
 const DIVER_CEILING_Y = -0.55;
 // 氣泡浮到這個高度（世界單位）就破掉。

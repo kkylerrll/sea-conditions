@@ -509,3 +509,9 @@ npm run build
   覆寫技巧＋截圖觸發，純粹呼叫 `window.scrollTo` 不夠
 - 截圖偶爾會抓到整片空白或前一個狀態的影格，那是擷取瑕疵不是頁面壞掉——
   稍微等一下或多截一張再看
+
+## 第十四輪
+
+- 首頁捲動更順：ScrollScene 啟用 Lenis 1.3.11（`lerp: 0.07`、`smoothWheel`、`syncTouch: false`、`autoRaf`），只在 `.progress-armed` 成立時建立、卸載即 destroy；引擎的 `SCROLL_SMOOTH_TIME` 由 0.8 降到 0.25 s，避免雙重平滑的遲滯。
+- 首頁隱藏捲軸：掛載時 `<html>` 加 `landing-no-scrollbar`（CSS 在 globals.css），卸載移除，其他頁面不受影響。
+- `next.config.mjs` 新增 `NEXT_DIST_DIR` 覆寫，可在 dev server 運行時用別的目錄 build。

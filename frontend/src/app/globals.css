@@ -633,3 +633,13 @@ body {
      根本不建立 WebGL renderer，畫布維持空白，不需要在這裡另外拿 CSS 蓋掉；
      .dive-scrim 是靜態漸層、不含動畫，開不開都留著沒差。 */
 }
+
+/* 首頁隱藏捲軸（ScrollScene 掛載時加在 <html> 上）；捲動功能不受影響。 */
+html.landing-no-scrollbar,
+html.landing-no-scrollbar body {
+  scrollbar-width: none;
+}
+html.landing-no-scrollbar::-webkit-scrollbar,
+html.landing-no-scrollbar body::-webkit-scrollbar {
+  display: none;
+}
