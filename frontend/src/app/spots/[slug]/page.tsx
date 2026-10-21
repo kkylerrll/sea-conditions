@@ -4,7 +4,6 @@ import ForecastStrip from "@/components/ForecastStrip";
 import LiveCams from "@/components/LiveCams";
 import {
   ActivityRatings,
-  KeyStats,
   SeaStateHero,
   TempGauge,
   TideCurve,
@@ -106,8 +105,6 @@ export default async function SpotPage({
           <ActivityRatings c={today} activities={location.activities} />
 
           <Freshness iso={today.fetched_at} className="block" />
-
-          <KeyStats c={today} />
 
           {today.slots && today.slots.length > 0 && (
             <div className="card-clean p-4 sm:p-5">

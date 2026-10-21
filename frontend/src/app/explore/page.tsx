@@ -1,5 +1,4 @@
 import HomeExplorer from "@/components/HomeExplorer";
-import Freshness from "@/components/Freshness";
 import RefreshButton from "@/components/RefreshButton";
 import { getLocations } from "@/lib/api";
 import { parseActivity } from "@/lib/sea";
@@ -28,23 +27,16 @@ export default async function ExplorePage({
     error = e instanceof Error ? e.message : "無法連線到後端";
   }
 
-  const latest = locations
-    .map((l) => l.today?.fetched_at)
-    .filter(Boolean)
-    .sort()
-    .pop();
-
   return (
     <main>
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">{HEADING_ZH[activity]}</h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <h1 className="text-2xl font-bold text-slate-800">{HEADING_ZH[activity]}</h1>
+          <p className="mt-1 text-sm text-slate-600">
             台灣潛點與衝浪點的今日海況燈號，點地圖看細節。
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Freshness iso={latest} />
           <RefreshButton />
         </div>
       </div>

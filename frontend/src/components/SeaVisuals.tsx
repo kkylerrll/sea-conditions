@@ -174,15 +174,15 @@ export function WindCompass({ c }: { c: Condition }) {
                 y1={cy - Math.cos(rad) * (R - 8)}
                 x2={cx + Math.sin(rad) * R}
                 y2={cy - Math.cos(rad) * R}
-                stroke="#cbd5e1"
+                stroke="#B3D6E8"
                 strokeWidth="2"
               />
             );
           })}
-          <text x={cx} y={cy - R + 14} textAnchor="middle" fontSize="11" fontWeight="700" fill="#64748b">北</text>
-          <text x={cx} y={cy + R - 6} textAnchor="middle" fontSize="11" fill="#64748b">南</text>
-          <text x={cx + R - 5} y={cy + 4} textAnchor="middle" fontSize="11" fill="#64748b">東</text>
-          <text x={cx - R + 5} y={cy + 4} textAnchor="middle" fontSize="11" fill="#64748b">西</text>
+          <text x={cx} y={cy - R + 14} textAnchor="middle" fontSize="12" fontWeight="700" fill="#B8442B">北</text>
+          <text x={cx} y={cy + R - 6} textAnchor="middle" fontSize="11" fill="#095A86">南</text>
+          <text x={cx + R - 5} y={cy + 4} textAnchor="middle" fontSize="11" fill="#095A86">東</text>
+          <text x={cx - R + 5} y={cy + 4} textAnchor="middle" fontSize="11" fill="#095A86">西</text>
 
           {deg != null ? (
             <g transform={`rotate(${deg} ${cx} ${cy})`}>
@@ -202,9 +202,12 @@ export function WindCompass({ c }: { c: Condition }) {
         <div className="min-w-0">
           <p className="text-2xl font-bold tabular-nums text-slate-800">
             {scale == null ? "—" : `${scale} 級`}
+            {c.wind_speed_ms != null && (
+              <span className="ml-1.5 text-sm font-semibold text-slate-600">{c.wind_speed_ms} m/s</span>
+            )}
           </p>
-          <p className="text-sm text-slate-600">{windDirZh(c.wind_dir)}</p>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="text-sm font-medium text-ocean-700">{windDirZh(c.wind_dir)}</p>
+          <p className="mt-1 text-xs text-slate-600">
             {windDesc(scale)}
             {c.gust_ms != null ? ` · 陣風 ${c.gust_ms} m/s` : ""}
           </p>
@@ -341,11 +344,20 @@ export function TempGauge({ c }: { c: Condition }) {
 
   return (
     <figure className="flex gap-4 card-clean p-4">
-      <svg viewBox="0 0 56 160" className="h-32 w-12 shrink-0" aria-hidden="true">
+      <svg viewBox="0 0 64 160" className="h-32 w-14 shrink-0" aria-hidden="true">
         <rect x={20} y={tubeTop} width={16} height={tubeBot - tubeTop} rx={8} fill="#EEF6FB" />
         {t != null && (
           <rect x={20} y={level} width={16} height={tubeBot - level} rx={8} fill="#0B6FA4" />
         )}
+        {[16, 24, 32].map((v) => {
+          const y = tubeBot - ((v - lo) / (hi - lo)) * (tubeBot - tubeTop);
+          return (
+            <g key={v}>
+              <line x1={38} y1={y} x2={43} y2={y} stroke="#B3D6E8" strokeWidth="1.5" />
+              <text x={45} y={y + 3} fontSize="9" fill="#095A86">{v}</text>
+            </g>
+          );
+        })}
         <circle cx={28} cy={138} r={14} fill={t == null ? "#cbd5e1" : "#0B6FA4"} />
         <rect x={24} y={110} width={8} height={30} fill={t == null ? "#cbd5e1" : "#0B6FA4"} />
       </svg>
@@ -355,108 +367,8 @@ export function TempGauge({ c }: { c: Condition }) {
           {t == null ? "—" : `${t.toFixed(1)}°C`}
         </p>
         <p className="mt-1 text-sm font-semibold text-ocean-700">建議 {suit}</p>
-        <p className="text-xs text-slate-500">{note}</p>
+        <p className="text-xs text-slate-600">{note}</p>
       </div>
     </figure>
-  );
-}
-
-
-/* ══════════ 5. 關鍵數字（浪／風／水溫／潮汐） ══════════ */
-
-const ICON_PROPS = {
-  width: 20,
-  height: 20,
-  viewBox: "0 0 24 24",
-  fill: "none",
-  stroke: "currentColor",
-  strokeWidth: 1.8,
-  strokeLinecap: "round" as const,
-  strokeLinejoin: "round" as const,
-  "aria-hidden": true,
-};
-
-const ICONS = {
-  wave: (
-    <svg {...ICON_PROPS}>
-      <path d="M2 9c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2M2 15c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2" />
-    </svg>
-  ),
-  wind: (
-    <svg {...ICON_PROPS}>
-      <path d="M3 8h10a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h6" />
-    </svg>
-  ),
-  temp: (
-    <svg {...ICON_PROPS}>
-      <path d="M10 14.5V5a2 2 0 1 1 4 0v9.5a4 4 0 1 1-4 0Z" />
-    </svg>
-  ),
-  tide: (
-    <svg {...ICON_PROPS}>
-      <path d="M12 3v12M8 11l4 4 4-4M3 20c2.5 0 2.5-2 4.5-2s2.5 2 4.5 2 2.5-2 4.5-2 2.5 2 4.5 2" />
-    </svg>
-  ),
-};
-
-function StatRow({
-  icon,
-  label,
-  value,
-  sub,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  sub?: string;
-}) {
-  return (
-    <div className="flex items-start gap-3 py-3">
-      <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ocean-50 text-ocean-600">
-        {icon}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-xs font-semibold tracking-wide text-slate-600">{label}</p>
-        <p className="text-lg font-bold tabular-nums text-slate-800">{value}</p>
-        {sub && <p className="text-xs leading-snug text-slate-600">{sub}</p>}
-      </div>
-    </div>
-  );
-}
-
-export function KeyStats({ c }: { c: Condition }) {
-  const tide =
-    c.tide_high || c.tide_low
-      ? `滿潮 ${c.tide_high ?? "—"}｜乾潮 ${c.tide_low ?? "—"}`
-      : "此地無潮汐預報資料";
-  return (
-    <section className="card-clean px-4 sm:px-5">
-      <h2 className="section-title mb-0 pt-4">關鍵數字</h2>
-      <div className="divide-y divide-ocean-100">
-        <StatRow
-          icon={ICONS.wave}
-          label="浪高"
-          value={c.wave_height_m != null ? `${c.wave_height_m.toFixed(1)} m` : "—"}
-          sub={
-            c.wave_period_s != null
-              ? `湧浪週期約 ${Math.round(c.wave_period_s)} 秒${c.wave_dir ? ` · 來向 ${compassZh(c.wave_dir)}` : ""}`
-              : undefined
-          }
-        />
-        <StatRow
-          icon={ICONS.wind}
-          label="風"
-          value={c.wind_scale != null ? `${c.wind_scale} 級 ${windDirZh(c.wind_dir)}` : "—"}
-          sub={`${windDesc(c.wind_scale)}${c.gust_ms != null ? ` · 陣風 ${c.gust_ms} m/s` : ""}`}
-        />
-        <StatRow
-          icon={ICONS.temp}
-          label="水溫"
-          value={c.water_temp_c != null ? `${c.water_temp_c.toFixed(1)} °C` : "—"}
-          sub={c.water_temp_c != null ? `建議 ${wetsuitAdvice(c.water_temp_c).suit}` : undefined}
-        />
-        <StatRow icon={ICONS.tide} label="潮汐" value={tide} />
-      </div>
-    </section>
   );
 }

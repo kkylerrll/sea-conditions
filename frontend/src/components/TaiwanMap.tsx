@@ -77,9 +77,26 @@ interface Props {
   selected: string | null;
   onSelect: (slug: string) => void;
   activity: ActivityKind;
+  /** 清單 hover 的地點 slug（與 marker hover 雙向同步） */
+  hovered?: string | null;
+  onHover?: (slug: string | null) => void;
 }
 
-export default function TaiwanMap({ locations, selected, onSelect, activity }: Props) {
+// 活動小圖示（24x24 座標、白色線條）：潛水面鏡／衝浪板
+function ActivityGlyph({ kind }: { kind: ActivityKind }) {
+  return kind === "dive" ? (
+    <g fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3a4 4 0 0 1-4 4h-2l-1.5-2h-3L9 15H7a4 4 0 0 1-4-4Z" />
+    </g>
+  ) : (
+    <g fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 19C3.5 11 11 3.5 20 4c.5 9-7 16.5-15 15Z" />
+      <path d="M8.5 15.5 15.5 8.5" />
+    </g>
+  );
+}
+
+export default function TaiwanMap({ locations, selected, onSelect, activity, hovered = null, onHover }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [vb, setVbState] = useState<ViewBox>(FULL);
   const vbRef = useRef(vb);
@@ -281,15 +298,18 @@ export default function TaiwanMap({ locations, selected, onSelect, activity }: P
       >
         <defs>
           <linearGradient id="ocean" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#e0f2fe" />
-            <stop offset="100%" stopColor="#bae6fd" />
+            <stop offset="0%" stopColor="#EEF6FB" />
+            <stop offset="100%" stopColor="#D9EAF4" />
           </linearGradient>
           <linearGradient id="land" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#f8fafc" />
-            <stop offset="100%" stopColor="#ecfccb" />
+            <stop offset="0%" stopColor="#FBF8F3" />
+            <stop offset="100%" stopColor="#F4EFE6" />
           </linearGradient>
           <filter id="landShadow" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#0c4a6e" floodOpacity="0.18" />
+            <feDropShadow dx="0" dy="1.5" stdDeviation="2.5" floodColor="#095A86" floodOpacity="0.16" />
+          </filter>
+          <filter id="pinShadow" x="-50%" y="-50%" width="200%" height="220%">
+            <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="#095A86" floodOpacity="0.35" />
           </filter>
         </defs>
 
@@ -301,9 +321,9 @@ export default function TaiwanMap({ locations, selected, onSelect, activity }: P
           <path
             d={detailed ? TAIWAN_COAST_FINE : TAIWAN_COAST_COARSE}
             fill="url(#land)"
-            stroke="#84cc16"
-            strokeWidth="1.4"
-            strokeOpacity="0.6"
+            stroke="#B3D6E8"
+            strokeWidth="1.6"
+            strokeOpacity="1"
             strokeLinejoin="round"
             vectorEffect="non-scaling-stroke"
           />
@@ -319,6 +339,7 @@ export default function TaiwanMap({ locations, selected, onSelect, activity }: P
           // 明確標示「這裡沒有這個活動的資料」，而且不能點。
           const dotFill = supported ? c.base : "#94a3b8";
           const isSel = selected === loc.slug;
+          const isHov = hovered === loc.slug;
           const labelLeft = x > MAP_W - 74;
           const labelBelow = y < 40;
 
@@ -341,6 +362,10 @@ export default function TaiwanMap({ locations, selected, onSelect, activity }: P
                     : "cursor-default outline-none"
                 }
                 onClick={supported ? () => activate(loc.slug) : undefined}
+                onPointerEnter={supported ? () => onHover?.(loc.slug) : undefined}
+                onPointerLeave={supported ? () => onHover?.(null) : undefined}
+                onFocus={supported ? () => onHover?.(loc.slug) : undefined}
+                onBlur={supported ? () => onHover?.(null) : undefined}
                 onKeyDown={
                   supported
                     ? (e) => {
@@ -353,26 +378,40 @@ export default function TaiwanMap({ locations, selected, onSelect, activity }: P
                 }
               >
                 {/* 觸控命中區 */}
-                {supported && <circle cx={0} cy={0} r={20} fill="transparent" />}
+                {supported && <circle cx={0} cy={0} r={22} fill="transparent" />}
                 {supported && (
-                  <circle className="pin-focus opacity-0" cx={0} cy={0} r={13} fill="none" stroke="#0284c7" strokeWidth="2" />
+                  <circle className="pin-focus opacity-0" cx={0} cy={0} r={17} fill="none" stroke="#0B6FA4" strokeWidth="2" />
                 )}
 
-                {supported && !isSel && (
+                {/* 選取光暈：ocean-600 */}
+                {isSel && <circle cx={0} cy={0} r={19} fill="#0B6FA4" fillOpacity="0.22" stroke="#0B6FA4" strokeWidth="2" />}
+
+                {supported && !isSel && c.base === RATING_HEX.green.base && (
                   <circle
                     cx={0}
                     cy={0}
-                    r={6}
+                    r={10}
                     fill={c.base}
-                    className="origin-center animate-ping opacity-30 motion-reduce:hidden"
+                    className="animate-ping opacity-25 motion-reduce:hidden"
                     style={{ transformBox: "fill-box", transformOrigin: "center" }}
                   />
                 )}
 
-                <circle cx={0} cy={0} r={isSel ? 8 : 6} fill={dotFill} stroke="#fff" strokeWidth={isSel ? 3 : 2} />
+                <g
+                  style={{
+                    transform: `scale(${isSel ? 1.25 : isHov ? 1.2 : 1})`,
+                    transition: "transform 150ms ease-out",
+                  }}
+                  filter={supported ? "url(#pinShadow)" : undefined}
+                >
+                  <circle cx={0} cy={0} r={11} fill={dotFill} stroke="#fff" strokeWidth={2.5} />
+                  <g transform="translate(-6.5 -6.5) scale(0.54)">
+                    <ActivityGlyph kind={activity} />
+                  </g>
+                </g>
 
                 <g
-                  transform={`translate(${labelLeft ? -10 : 10}, ${labelBelow ? 14 : -4})`}
+                  transform={`translate(${labelLeft ? -16 : 16}, ${labelBelow ? 18 : -8})`}
                   textAnchor={labelLeft ? "end" : "start"}
                 >
                   <text
@@ -380,7 +419,7 @@ export default function TaiwanMap({ locations, selected, onSelect, activity }: P
                     y={0}
                     className="font-bold"
                     fontSize="11"
-                    fill={supported ? "#0f172a" : "#94a3b8"}
+                    fill={supported ? "#095A86" : "#94a3b8"}
                     stroke="#fff"
                     strokeWidth="3"
                     paintOrder="stroke"
@@ -398,7 +437,7 @@ export default function TaiwanMap({ locations, selected, onSelect, activity }: P
         <button
           type="button"
           onClick={resetView}
-          className="absolute right-2 top-2 rounded-full bg-white/90 px-3 py-1 text-xs font-medium text-slate-600 shadow ring-1 ring-slate-200 backdrop-blur transition hover:bg-white hover:text-slate-900"
+          className="absolute right-2 top-2 rounded-full bg-white/90 px-3 py-1.5 text-xs font-medium text-ocean-700 shadow ring-1 ring-ocean-200 backdrop-blur transition hover:bg-white hover:text-slate-900"
         >
           回全台
         </button>
