@@ -26,7 +26,7 @@ export default function Header({
   mobileTriggerRef,
 }: Props) {
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-ocean-100 bg-sand/90 backdrop-blur">
       <div
         className="flex h-14 w-full items-center gap-2 px-2 sm:px-4"
         style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
@@ -64,7 +64,7 @@ export default function Header({
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="shrink-0">
             <path
               d="M2 15c2 0 2-1.6 4-1.6S8 15 10 15s2-1.6 4-1.6S16 15 18 15s2-1.6 4-1.6M2 19c2 0 2-1.6 4-1.6S8 19 10 19s2-1.6 4-1.6S16 19 18 19s2-1.6 4-1.6M6 9.5C6 6 8.5 4 12 4s5.5 2.4 5.5 5.5"
-              stroke="#0284c7"
+              stroke="#0B6FA4"
               strokeWidth="1.8"
               strokeLinecap="round"
             />
@@ -93,7 +93,7 @@ function ActivityToggle({
     <div
       role="radiogroup"
       aria-label="切換要看潛水還是衝浪的海況"
-      className="inline-flex rounded-full border border-slate-200 bg-slate-100 p-0.5"
+      className="inline-flex rounded-full border border-ocean-100 bg-sand-100 p-0.5"
     >
       {options.map((opt) => {
         const active = activity === opt;
@@ -106,7 +106,7 @@ function ActivityToggle({
             aria-pressed={active}
             onClick={() => onChange(opt)}
             className={`min-h-11 min-w-[64px] cursor-pointer rounded-full px-3 text-sm font-semibold outline-none transition-colors duration-200 motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-1 ${
-              active ? "bg-white text-sky-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              active ? "bg-white text-ocean-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
             }`}
           >
             {ACTIVITY_KIND_ZH[opt]}

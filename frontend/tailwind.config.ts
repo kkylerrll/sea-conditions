@@ -16,6 +16,16 @@ const config: Config = {
         ],
       },
       colors: {
+        // 「清爽海灘」：沙白底、深海藍主色、珊瑚橘只做點綴
+        sand: { DEFAULT: "#FBF8F3", 100: "#F4EFE6" },
+        ocean: {
+          50: "#EEF6FB",
+          100: "#D9EAF4",
+          200: "#B3D6E8",
+          600: "#0B6FA4",
+          700: "#095A86",
+        },
+        coral: { 400: "#F2785C", 700: "#B8442B" },
         sea: {
           50: "#eff9ff",
           100: "#dff2ff",

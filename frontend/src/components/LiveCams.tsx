@@ -7,13 +7,13 @@ const REFRESH_MS = 60_000;
 
 function CamFooter({ cam }: { cam: LiveCam }) {
   return (
-    <p className="text-[11px] leading-relaxed text-slate-500">
+    <p className="text-xs leading-relaxed text-slate-600">
       影像來源：
       <a
         href={cam.sourceUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-sky-600 hover:underline"
+        className="text-ocean-600 hover:underline"
       >
         {cam.owner}
       </a>
@@ -28,7 +28,7 @@ function YoutubeCard({ cam }: { cam: YoutubeCam }) {
     ? `https://www.youtube-nocookie.com/embed/live_stream?channel=${cam.channelId}&autoplay=1&mute=1`
     : `https://www.youtube-nocookie.com/embed/${cam.videoId}?autoplay=1&mute=1`;
   return (
-    <div className="aspect-video w-full overflow-hidden rounded-xl bg-slate-900">
+    <div className="aspect-video w-full overflow-hidden rounded-xl border border-ocean-100 bg-ocean-50">
       {playing ? (
         <iframe
           src={src}
@@ -43,14 +43,14 @@ function YoutubeCard({ cam }: { cam: YoutubeCam }) {
         <button
           type="button"
           onClick={() => setPlaying(true)}
-          className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-sky-900 to-slate-900 px-4 text-center text-white transition hover:from-sky-800"
+          className="flex h-full w-full flex-col items-center justify-center gap-2 bg-ocean-50 px-4 text-center text-ocean-700 transition hover:bg-ocean-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-600"
         >
           <svg width="40" height="40" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
             <path d="M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16Zm-1.5 4.7 5 3.3-5 3.3V6.7Z" />
           </svg>
           <span className="text-sm font-semibold">{cam.name}</span>
-          <span className="text-xs text-sky-200">{cam.owner}</span>
-          <span className="rounded-full bg-white/15 px-3 py-0.5 text-xs">點擊播放</span>
+          <span className="text-xs text-slate-600">{cam.owner}</span>
+          <span className="rounded-full bg-ocean-600 px-3 py-1 text-xs font-medium text-white">點擊播放</span>
         </button>
       )}
     </div>
@@ -83,7 +83,7 @@ function ImageCard({ cam }: { cam: ImageCam }) {
 
   const sep = cam.url.includes("?") ? "&" : "?";
   return (
-    <div ref={ref} className="aspect-video w-full overflow-hidden rounded-xl bg-slate-100">
+    <div ref={ref} className="aspect-video w-full overflow-hidden rounded-xl border border-ocean-100 bg-ocean-50">
       {failed ? (
         <a
           href={cam.sourceUrl}
@@ -92,7 +92,7 @@ function ImageCard({ cam }: { cam: ImageCam }) {
           className="flex h-full w-full flex-col items-center justify-center gap-1 px-4 text-center text-sm text-slate-600 hover:bg-slate-200"
         >
           <span>影像暫時無法載入</span>
-          <span className="text-xs text-sky-600">前往來源頁觀看</span>
+          <span className="text-xs text-ocean-600">前往來源頁觀看</span>
         </a>
       ) : (
         // eslint-disable-next-line @next/next/no-img-element
@@ -113,7 +113,7 @@ function LinkCard({ cam }: { cam: LinkCam }) {
       href={cam.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex aspect-video w-full flex-col items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 text-center text-sky-800 transition hover:bg-sky-100"
+      className="flex aspect-video w-full flex-col items-center justify-center gap-2 rounded-xl border border-ocean-200 bg-ocean-50 px-4 text-center text-ocean-700 transition hover:bg-ocean-100"
     >
       <span className="text-sm font-semibold">{cam.name}</span>
       <span className="text-xs">到官方網站觀看即時影像 ↗</span>
@@ -125,12 +125,12 @@ export default function LiveCams({ slug }: { slug: string }) {
   const cams = LIVE_CAMS[slug];
   if (!cams || cams.length === 0) return null;
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <h2 className="mb-3 text-base font-bold text-slate-900">即時影像</h2>
+    <section className="card-clean p-4 sm:p-5">
+      <h2 className="section-title">即時影像</h2>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {cams.map((cam) => (
           <div key={`${cam.kind}-${cam.name}`} className="min-w-0 space-y-1.5">
-            <h3 className="truncate text-sm font-medium text-slate-700">{cam.name}</h3>
+            <h3 className="truncate text-sm font-medium text-slate-800">{cam.name}</h3>
             {cam.kind === "youtube" && <YoutubeCard cam={cam} />}
             {cam.kind === "image" && <ImageCard cam={cam} />}
             {cam.kind === "link" && <LinkCard cam={cam} />}
@@ -138,7 +138,7 @@ export default function LiveCams({ slug }: { slug: string }) {
           </div>
         ))}
       </div>
-      <p className="mt-3 text-[11px] text-slate-400">影像由第三方提供，可能延遲或暫停</p>
+      <p className="mt-3 text-[11px] text-slate-500">影像由第三方提供，可能延遲或暫停</p>
     </section>
   );
 }

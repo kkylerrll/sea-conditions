@@ -115,7 +115,7 @@ export default function AppChrome({
             style={{ paddingBottom: "calc(4rem + env(safe-area-inset-bottom))" }}
           >
             {children}
-            <footer className="mx-auto mt-12 max-w-5xl border-t border-slate-200 pt-6 text-center text-xs text-slate-400">
+            <footer className="mx-auto mt-12 max-w-5xl border-t border-ocean-100 pt-6 text-center text-xs text-slate-600">
               海況資料僅供參考，下水前請以現場狀況與官方沿岸預報為準。
             </footer>
           </div>

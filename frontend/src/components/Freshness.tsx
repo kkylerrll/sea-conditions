@@ -13,7 +13,7 @@ export default function Freshness({
   if (!f) return null;
   return (
     <span
-      className={`text-xs ${f.stale ? "rounded-md bg-amber-50 px-1.5 py-0.5 text-amber-700" : "text-slate-400"} ${className}`}
+      className={`text-xs ${f.stale ? "rounded-md bg-amber-50 px-1.5 py-0.5 text-amber-800" : "text-slate-600"} ${className}`}
     >
       資料更新於 {f.time}
       {f.stale ? " · 資料可能較舊" : ""}
