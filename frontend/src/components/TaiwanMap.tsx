@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { MAP_H, MAP_W, project, SPOT_NUDGE } from "@/lib/geo";
 import { ACTIVITY_KIND_ZH, type ActivityKind, RATING_HEX, ratingFor, supportsActivity } from "@/lib/sea";
 import {
@@ -75,12 +75,40 @@ function markerPos(loc: Location): { x: number; y: number } {
 interface Props {
   locations: Location[];
   selected: string | null;
-  onSelect: (slug: string) => void;
+  /** 傳 null 代表取消選取（點空白處、按 Esc、關閉預覽卡） */
+  onSelect: (slug: string | null) => void;
   activity: ActivityKind;
   /** 清單 hover 的地點 slug（與 marker hover 雙向同步） */
   hovered?: string | null;
   onHover?: (slug: string | null) => void;
+  /** 選取某個 pin 後，浮在 pin 旁（手機為底部卡）的預覽卡內容 */
+  renderPreview?: (loc: Location, close: () => void) => ReactNode;
 }
+
+/* 標籤方向：全台縮放時 13 個點很擠，逐一指定往哪邊長，避免互相壓住
+   （例：蘭嶼與墾丁、東北角與宜蘭）。l/r = 左右，t/b = 上下置中。 */
+const LABEL_SIDE: Record<string, "l" | "r" | "t" | "b"> = {
+  beihaian: "l",
+  longdong: "b",
+  yilan: "r",
+  miaoli: "l",
+  tainan: "l",
+  kaohsiung: "l",
+  taitung: "r",
+  lyudao: "r",
+  lanyu: "r",
+  "kenting-houbihu": "l",
+  xiaoliuqiu: "l",
+  penghu: "r",
+  "penghu-south": "r",
+};
+
+const LABEL_POS = {
+  l: { x: -17, y: 4, anchor: "end" },
+  r: { x: 17, y: 4, anchor: "start" },
+  t: { x: 0, y: -19, anchor: "middle" },
+  b: { x: 0, y: 27, anchor: "middle" },
+} as const;
 
 // 活動小圖示（24x24 座標、白色線條）：潛水面鏡／衝浪板
 function ActivityGlyph({ kind }: { kind: ActivityKind }) {
@@ -96,7 +124,15 @@ function ActivityGlyph({ kind }: { kind: ActivityKind }) {
   );
 }
 
-export default function TaiwanMap({ locations, selected, onSelect, activity, hovered = null, onHover }: Props) {
+export default function TaiwanMap({
+  locations,
+  selected,
+  onSelect,
+  activity,
+  hovered = null,
+  onHover,
+  renderPreview,
+}: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [vb, setVbState] = useState<ViewBox>(FULL);
   const vbRef = useRef(vb);
@@ -111,6 +147,11 @@ export default function TaiwanMap({ locations, selected, onSelect, activity, hov
   const moved = useRef(false);
   const raf = useRef<number | null>(null);
   const reduced = useRef(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  // 容器實際像素寬：pin／標籤要維持固定「螢幕像素」大小，要用它換算 viewBox 單位
+  const [cw, setCw] = useState(560);
+  const locsRef = useRef(locations);
+  locsRef.current = locations;
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -120,6 +161,15 @@ export default function TaiwanMap({ locations, selected, onSelect, activity, hov
     sync();
     mq.addEventListener?.("change", sync);
     return () => mq.removeEventListener?.("change", sync);
+  }, []);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    setCw(el.getBoundingClientRect().width || 560);
+    const ro = new ResizeObserver(([e]) => setCw(e.contentRect.width || 560));
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
   useEffect(() => () => {
@@ -162,7 +212,7 @@ export default function TaiwanMap({ locations, selected, onSelect, activity, hov
       }
       const from = { ...vbRef.current };
       const t0 = performance.now();
-      const dur = 420;
+      const dur = 460;
       const tick = (now: number) => {
         const p = Math.min(1, (now - t0) / dur);
         const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
@@ -179,6 +229,34 @@ export default function TaiwanMap({ locations, selected, onSelect, activity, hov
     },
     [setVb],
   );
+
+  // 選取變動（點 pin 或點清單卡）→ 把該點平移到預覽卡看得到的位置。
+  // 離島走原本的 zoom-to-island；本島放大到約 1.7 倍。手機預覽卡蓋在底部，
+  // 所以 pin 要放在畫面偏上（30%），桌機放正中。
+  useEffect(() => {
+    if (!selected) return;
+    const loc = locsRef.current.find((l) => l.slug === selected);
+    if (!loc) return;
+    const mobile = window.matchMedia("(max-width: 639px)").matches;
+    const key = SLUG_ISLAND[selected];
+    const p = markerPos(loc);
+    // 桌機：pin 放偏左（36%），預覽卡往右展開；手機：置中偏上
+    const ry = mobile ? 0.3 : 0.5;
+    const rx = mobile ? 0.5 : 0.36;
+    const w = key ? Math.max(islandTarget(key).w, 60) : MAP_W / 1.7;
+    const h = w * ASPECT;
+    animateTo({ x: p.x - rx * w, y: p.y - ry * h, w, h });
+  }, [selected, animateTo]);
+
+  // Esc 關閉預覽卡
+  useEffect(() => {
+    if (!selected) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onSelect(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selected, onSelect]);
 
   // wheel zoom — needs a non-passive native listener to preventDefault
   useEffect(() => {
@@ -272,156 +350,183 @@ export default function TaiwanMap({ locations, selected, onSelect, activity, hov
     (slug: string) => {
       if (moved.current) return;
       onSelect(slug);
-      const key = SLUG_ISLAND[slug];
-      if (key) animateTo(islandTarget(key));
     },
-    [animateTo, onSelect],
+    [onSelect],
   );
 
   const zoom = MAP_W / vb.w;
-  const inv = 1 / zoom;
+  const inv = vb.w / cw; // 1 個 viewBox 單位 = cw / vb.w 像素，反過來縮放 → 1 單位 = 1px
   const detailed = zoom >= LOD_ZOOM;
   const isZoomed = vb.w < MAP_W - ZOOM_EPS;
+  const coast = detailed ? TAIWAN_COAST_FINE : TAIWAN_COAST_COARSE;
+
+  const selLoc = selected ? locations.find((l) => l.slug === selected) ?? null : null;
+  const selPos = selLoc ? markerPos(selLoc) : null;
+  const selPct = selPos
+    ? { x: ((selPos.x - vb.x) / vb.w) * 100, y: ((selPos.y - vb.y) / vb.h) * 100 }
+    : null;
 
   return (
-    <div className="relative">
+    // 容器固定 300:420，svg 填滿 → viewBox 座標與百分比定位一一對應，預覽卡才抓得準
+    <div
+      ref={wrapRef}
+      className="relative mx-auto aspect-[300/420] w-full"
+      style={{ maxWidth: "min(100%, calc(76vh * 300 / 420))" }}
+    >
       <svg
         ref={svgRef}
         viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
-        className="h-auto w-full max-h-[62vh] touch-none select-none sm:max-h-[70vh] xl:max-h-[78vh]"
+        className="block h-full w-full touch-none select-none overflow-hidden rounded-[1.25rem]"
         role="group"
         aria-label="台灣潛點分布地圖，可捲動縮放與拖曳平移"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endPointer}
         onPointerCancel={endPointer}
+        onClick={(e) => {
+          // 點到空白處（不是 pin、也不是拖曳）→ 關閉預覽卡
+          if (!moved.current && !(e.target as Element).closest("[data-pin]")) onSelect(null);
+        }}
       >
         <defs>
-          <linearGradient id="ocean" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#EEF6FB" />
-            <stop offset="100%" stopColor="#D9EAF4" />
+          <linearGradient id="ocean" x1="0" y1="0" x2="0.4" y2="1">
+            <stop offset="0%" stopColor="#CBE7F5" />
+            <stop offset="55%" stopColor="#9CCDE6" />
+            <stop offset="100%" stopColor="#6FB2D6" />
           </linearGradient>
+          <radialGradient id="seaGlow" cx="0.3" cy="0.35" r="0.8">
+            <stop offset="0%" stopColor="#fff" stopOpacity="0.5" />
+            <stop offset="100%" stopColor="#fff" stopOpacity="0" />
+          </radialGradient>
           <linearGradient id="land" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#FBF8F3" />
-            <stop offset="100%" stopColor="#F4EFE6" />
+            <stop offset="0%" stopColor="#FFFCF5" />
+            <stop offset="100%" stopColor="#F2E9D6" />
           </linearGradient>
           <filter id="landShadow" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="1.5" stdDeviation="2.5" floodColor="#095A86" floodOpacity="0.16" />
+            <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#073B5E" floodOpacity="0.28" />
           </filter>
           <filter id="pinShadow" x="-50%" y="-50%" width="200%" height="220%">
-            <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="#095A86" floodOpacity="0.35" />
+            <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="#052A45" floodOpacity="0.45" />
           </filter>
         </defs>
 
-        <rect x="0" y="0" width={MAP_W} height={MAP_H} fill="url(#ocean)" rx="18" />
+        <rect x="0" y="0" width={MAP_W} height={MAP_H} fill="url(#ocean)" />
+        <rect x="0" y="0" width={MAP_W} height={MAP_H} fill="url(#seaGlow)" />
 
-        {/* 陸地（本島 + 澎湖 + 綠島 + 蘭嶼 + 小琉球，單一 path）；
-            放大後換高細節版本，描邊維持固定粗細 */}
+        {/* 淺水暈：同一條海岸線疊兩層寬描邊，做出由岸邊往外海漸深的層次 */}
+        <path d={coast} fill="none" stroke="#E4F4FB" strokeOpacity="0.55" strokeWidth="16" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        <path d={coast} fill="none" stroke="#E4F4FB" strokeOpacity="0.7" strokeWidth="7" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+
+        {/* 陸地（本島 + 澎湖 + 綠島 + 蘭嶼 + 小琉球，單一 path）；放大後換高細節版本 */}
         <g filter="url(#landShadow)">
           <path
-            d={detailed ? TAIWAN_COAST_FINE : TAIWAN_COAST_COARSE}
+            d={coast}
             fill="url(#land)"
-            stroke="#B3D6E8"
-            strokeWidth="1.6"
-            strokeOpacity="1"
+            stroke="#5FA3C7"
+            strokeWidth="1.4"
             strokeLinejoin="round"
             vectorEffect="non-scaling-stroke"
           />
         </g>
 
         {/* 潛點 marker：外層用未縮放座標定位，內層 scale(1/zoom) 反向抵銷，
-            所以 pin 與文字在任何縮放倍率下都保持固定螢幕大小 */}
-        {locations.map((loc) => {
+            所以 pin 與文字在任何縮放倍率下都保持固定螢幕大小。
+            選取的點最後畫，才不會被別的 pin 蓋住。 */}
+        {[...locations].sort((a, b) => Number(a.slug === selected) - Number(b.slug === selected)).map((loc) => {
           const { x, y } = markerPos(loc);
           const supported = supportsActivity(loc.activities, activity);
-          const c = RATING_HEX[ratingFor(loc.today, activity)];
-          // 不支援目前活動的地區：地圖形狀不能少一塊，但要用灰階 + 降低不透明度
-          // 明確標示「這裡沒有這個活動的資料」，而且不能點。
-          const dotFill = supported ? c.base : "#94a3b8";
+          const rk = ratingFor(loc.today, activity);
+          const c = RATING_HEX[rk];
+          // 「無預報」：這個活動不支援，或支援但沒資料。用虛線空心圈，跟有燈號的實心 pin 一眼可分。
+          const noRating = !supported || rk === "unknown";
           const isSel = selected === loc.slug;
           const isHov = hovered === loc.slug;
-          const labelLeft = x > MAP_W - 74;
-          const labelBelow = y < 40;
+          const lp = LABEL_POS[LABEL_SIDE[loc.slug] ?? "r"];
+          const showLabel = isSel || isHov;
+          const label = supported
+            ? `${loc.name}，今日${ACTIVITY_KIND_ZH[activity]}海況${c.label}`
+            : `${loc.name}，沒有${ACTIVITY_KIND_ZH[activity]}預報`;
 
           return (
-            <g key={loc.slug} transform={`translate(${x} ${y})`} opacity={supported ? 1 : 0.45}>
+            <g key={loc.slug} transform={`translate(${x} ${y})`}>
               <g
+                data-pin
                 transform={`scale(${inv})`}
-                role={supported ? "button" : undefined}
-                tabIndex={supported ? 0 : -1}
-                aria-hidden={supported ? undefined : true}
-                aria-label={
-                  supported
-                    ? `${loc.name}，今日${ACTIVITY_KIND_ZH[activity]}海況${c.label}`
-                    : undefined
-                }
-                aria-pressed={supported ? isSel : undefined}
-                className={
-                  supported
-                    ? "cursor-pointer outline-none [&:focus-visible_.pin-focus]:opacity-100"
-                    : "cursor-default outline-none"
-                }
-                onClick={supported ? () => activate(loc.slug) : undefined}
-                onPointerEnter={supported ? () => onHover?.(loc.slug) : undefined}
-                onPointerLeave={supported ? () => onHover?.(null) : undefined}
-                onFocus={supported ? () => onHover?.(loc.slug) : undefined}
-                onBlur={supported ? () => onHover?.(null) : undefined}
-                onKeyDown={
-                  supported
-                    ? (e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          activate(loc.slug);
-                        }
-                      }
-                    : undefined
-                }
+                role="button"
+                tabIndex={0}
+                aria-label={label}
+                aria-pressed={isSel}
+                className="cursor-pointer outline-none [&:focus-visible_.pin-focus]:opacity-100"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  activate(loc.slug);
+                }}
+                onPointerEnter={() => onHover?.(loc.slug)}
+                onPointerLeave={() => onHover?.(null)}
+                onFocus={() => onHover?.(loc.slug)}
+                onBlur={() => onHover?.(null)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    activate(loc.slug);
+                  }
+                }}
               >
                 {/* 觸控命中區 */}
-                {supported && <circle cx={0} cy={0} r={22} fill="transparent" />}
-                {supported && (
-                  <circle className="pin-focus opacity-0" cx={0} cy={0} r={17} fill="none" stroke="#0B6FA4" strokeWidth="2" />
-                )}
+                <circle cx={0} cy={0} r={22} fill="transparent" />
+                <circle className="pin-focus opacity-0" cx={0} cy={0} r={19} fill="none" stroke="#0B6FA4" strokeWidth="2.5" strokeDasharray="4 3" />
 
-                {/* 選取光暈：ocean-600 */}
-                {isSel && <circle cx={0} cy={0} r={19} fill="#0B6FA4" fillOpacity="0.22" stroke="#0B6FA4" strokeWidth="2" />}
+                {isSel && <circle cx={0} cy={0} r={21} fill="#fff" fillOpacity="0.55" stroke="#073B5E" strokeWidth="2" />}
 
-                {supported && !isSel && c.base === RATING_HEX.green.base && (
+                {!noRating && !isSel && rk === "green" && (
                   <circle
                     cx={0}
                     cy={0}
-                    r={10}
+                    r={13}
                     fill={c.base}
-                    className="animate-ping opacity-25 motion-reduce:hidden"
+                    className="animate-ping opacity-30 motion-reduce:hidden"
                     style={{ transformBox: "fill-box", transformOrigin: "center" }}
                   />
                 )}
 
                 <g
                   style={{
-                    transform: `scale(${isSel ? 1.25 : isHov ? 1.2 : 1})`,
-                    transition: "transform 150ms ease-out",
+                    transform: `scale(${isSel ? 1.2 : isHov ? 1.15 : 1})`,
+                    transition: "transform 160ms ease-out",
                   }}
-                  filter={supported ? "url(#pinShadow)" : undefined}
+                  filter="url(#pinShadow)"
                 >
-                  <circle cx={0} cy={0} r={11} fill={dotFill} stroke="#fff" strokeWidth={2.5} />
-                  <g transform="translate(-6.5 -6.5) scale(0.54)">
-                    <ActivityGlyph kind={activity} />
-                  </g>
+                  {noRating ? (
+                    <>
+                      <circle cx={0} cy={0} r={10} fill="#F4F7FA" fillOpacity="0.95" stroke="#7C8DA0" strokeWidth={2} strokeDasharray="3.2 2.6" />
+                      <path d="M-4 0h8" stroke="#7C8DA0" strokeWidth="2.2" strokeLinecap="round" />
+                    </>
+                  ) : (
+                    <>
+                      <circle cx={0} cy={0} r={12} fill={c.base} stroke="#fff" strokeWidth={3} />
+                      <g transform="translate(-7 -7) scale(0.58)">
+                        <ActivityGlyph kind={activity} />
+                      </g>
+                    </>
+                  )}
                 </g>
 
+                {/* 標籤：桌機常駐（各點已指定方向避免互壓），手機只在 hover／選取時顯示 */}
                 <g
-                  transform={`translate(${labelLeft ? -16 : 16}, ${labelBelow ? 18 : -8})`}
-                  textAnchor={labelLeft ? "end" : "start"}
+                  transform={`translate(${lp.x} ${lp.y})`}
+                  textAnchor={lp.anchor}
+                  className={showLabel ? undefined : "max-sm:hidden"}
+                  pointerEvents="none"
                 >
                   <text
                     x={0}
                     y={0}
-                    className="font-bold"
-                    fontSize="11"
-                    fill={supported ? "#095A86" : "#94a3b8"}
+                    fontSize="13"
+                    fontWeight={noRating ? 500 : 700}
+                    fill={noRating ? "#4B6178" : "#052A45"}
                     stroke="#fff"
-                    strokeWidth="3"
+                    strokeWidth="3.5"
+                    strokeLinejoin="round"
                     paintOrder="stroke"
                   >
                     {loc.name}
@@ -437,10 +542,21 @@ export default function TaiwanMap({ locations, selected, onSelect, activity, hov
         <button
           type="button"
           onClick={resetView}
-          className="absolute right-2 top-2 rounded-full bg-white/90 px-3 py-1.5 text-xs font-medium text-ocean-700 shadow ring-1 ring-ocean-200 backdrop-blur transition hover:bg-white hover:text-slate-900"
+          className="absolute right-2.5 top-2.5 min-h-9 rounded-full bg-white/95 px-3.5 py-1.5 text-xs font-semibold text-ocean-700 shadow-soft ring-1 ring-ocean-200 backdrop-blur transition hover:bg-white hover:text-slate-900"
         >
           回全台
         </button>
+      )}
+
+      {selLoc && selPct && renderPreview && (
+        <div
+          key={selLoc.slug}
+          className="map-pop"
+          data-side={selPct.x < 52 ? "r" : "l"}
+          style={{ ["--px" as string]: `${selPct.x}%`, ["--py" as string]: `${selPct.y}%` }}
+        >
+          {renderPreview(selLoc, () => onSelect(null))}
+        </div>
       )}
     </div>
   );
