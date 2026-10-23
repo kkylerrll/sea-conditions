@@ -114,6 +114,52 @@ def _rate_pair(r: dict) -> dict:
     }
 
 
+def _daytime_headline(row: dict) -> bool:
+    """有白天時段時，用時段重算當天燈號（就地改 row["ratings"]、raw）。回傳是否有套用。
+
+    每日欄位來自 Open-Meteo daily 最大值，涵蓋整天 24 小時（含夜間），
+    會比白天時段更差而與時段燈號矛盾。使用者可以挑時段出發，所以主燈號取「最佳時段」，
+    並用 daytime_range 保留最差時段，讓前端仍可提醒。
+    """
+    slots = [sl for sl in (row.get("slots") or []) if sl.get("ratings")]
+    if not slots:
+        return False
+    applied = False
+    for act in ("dive", "surf"):
+        scored = [
+            (sl, sl["ratings"][act])
+            for sl in slots
+            if (sl["ratings"].get(act) or {}).get("score") is not None
+        ]
+        if not scored:
+            continue  # 這個活動所有時段都缺資料：維持整天的算法
+        # max/min 遇同分取第一個 = 較早的時段
+        best_sl, best_r = max(scored, key=lambda t: t[1]["score"])
+        worst_sl, _ = min(scored, key=lambda t: t[1]["score"])
+        bits = []
+        if best_sl.get("wave_height_m") is not None:
+            bits.append(f"浪 {best_sl['wave_height_m']:.1f}m")
+        if best_sl.get("wind_scale") is not None:
+            bits.append(f"風 {best_sl['wind_scale']} 級")
+        window = f"{best_sl['label']}（{best_sl['start'][:2]}–{best_sl['end'][:2]}）"
+        head = f"最佳時段 {window}" + ("：" + "、".join(bits) if bits else "")
+        row["ratings"][act] = {
+            "rating": best_r["rating"],
+            "score": best_r["score"],
+            "reasons": [head] + list(best_r.get("reasons") or []),
+            "daytime_range": {"best": best_sl["key"], "worst": worst_sl["key"]},
+        }
+        applied = True
+    if applied:
+        waves = [sl["wave_height_m"] for sl in slots if sl.get("wave_height_m") is not None]
+        winds = [sl["wind_speed_ms"] for sl in slots if sl.get("wind_speed_ms") is not None]
+        raw = dict(row.get("raw") or {})
+        raw["daytime_wave_max_m"] = max(waves) if waves else None
+        raw["daytime_wind_max_ms"] = max(winds) if winds else None
+        row["raw"] = raw
+    return applied
+
+
 def enrich(location_name: str, row: dict, activities: list | None = None) -> dict:
     """就地補上 rating（相容欄位）+ ratings（依活動別）+ advice。
 
@@ -131,6 +177,7 @@ def enrich(location_name: str, row: dict, activities: list | None = None) -> dic
         if sl.get("wind_scale") is None:
             sl["wind_scale"] = beaufort(sl.get("wind_speed_ms"))
         sl["ratings"] = _rate_pair(sl)
+    _daytime_headline(row)  # 有時段就以白天時段為準，避免與時段燈號矛盾
     # 相容欄位 = 主要活動的值（舊前端與 advice 只讀這組）
     compat = row["ratings"][primary]
     row["rating"] = compat["rating"]

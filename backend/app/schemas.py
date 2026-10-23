@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
@@ -12,6 +12,8 @@ class ActivityRating(BaseModel):
     rating: str
     score: Optional[float] = None
     reasons: List[str] = []
+    # 有白天時段時：{"best": 時段key, "worst": 時段key}
+    daytime_range: Optional[Dict[str, str]] = None
 
 
 class Ratings(BaseModel):

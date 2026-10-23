@@ -52,6 +52,8 @@ def best_slot_sentence(c: dict, activity: str) -> str:
 
 def _template(location_name: str, c: dict, activity: str = "dive") -> str:
     text = _base_template(location_name, c, activity)
+    # 當天燈號已改以最佳白天時段為準（build._daytime_headline），
+    # 這裡點名的時段與燈號同源，所以句子不會互相矛盾。
     return text + best_slot_sentence(c, activity)
 
 
@@ -59,6 +61,11 @@ def _base_template(location_name: str, c: dict, activity: str = "dive") -> str:
     rating = c.get("rating", "unknown")
     wh = c.get("wave_height_m")
     ws = c.get("wind_scale")
+    # 燈號以最佳白天時段為準時，括號內的數字也改用該時段，才與燈號一致
+    best_key = (((c.get("ratings") or {}).get(activity)) or {}).get("daytime_range", {}).get("best")
+    for sl in c.get("slots") or []:
+        if best_key and sl.get("key") == best_key:
+            wh, ws = sl.get("wave_height_m"), sl.get("wind_scale")
 
     detail_bits = []
     if wh is not None:
