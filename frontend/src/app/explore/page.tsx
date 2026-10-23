@@ -60,7 +60,7 @@ export default async function ExplorePage({
               {HEADING_ZH[activity]}
             </h1>
             <p className="mt-3 max-w-lg text-sm leading-relaxed text-white/85 sm:text-base">
-              台灣潛點與衝浪點的今日海況燈號。點地圖上的標記預覽，或直接從右邊清單挑一個。
+              台灣潛點與衝浪點的今日海況燈號。點地圖上的標記看預覽，再點一次直接進詳情；也可以從清單挑一個。
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
               <RefreshButton tone="dark" />

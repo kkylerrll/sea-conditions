@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import TaiwanMap from "@/components/TaiwanMap";
+import dynamic from "next/dynamic";
 import { MiniSlots } from "@/components/SlotTimeline";
 import {
   ACTIVITY_KIND_ZH,
@@ -13,6 +13,16 @@ import {
   supportsActivity,
 } from "@/lib/sea";
 import type { Location, Rating } from "@/lib/types";
+
+// 地圖只在瀏覽器端載入（maplibre-gl 不進 SSR）
+const LiveMap = dynamic(() => import("@/components/LiveMap"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-[62vh] min-h-[26rem] items-center justify-center rounded-[1.25rem] bg-ocean-50 text-sm font-semibold text-ocean-700 lg:h-[70vh]">
+      地圖載入中…
+    </div>
+  ),
+});
 
 function fmt(v: number | null | undefined, unit: string) {
   return v == null ? "—" : `${v}${unit}`;
@@ -95,7 +105,7 @@ export default function HomeExplorer({
         ref={mapRef}
         className="min-w-0 scroll-mt-16 rounded-[1.75rem] bg-gradient-to-b from-white to-ocean-50 p-2 shadow-lift ring-1 ring-ocean-100 sm:p-3 lg:sticky lg:top-20"
       >
-        <TaiwanMap
+        <LiveMap
           locations={mapLocations}
           selected={selected}
           onSelect={setSelected}
@@ -359,7 +369,7 @@ function Legend({ activity }: { activity: ActivityKind }) {
           <span>無預報（非{ACTIVITY_KIND_ZH[activity]}點或沒資料）</span>
         </li>
       </ul>
-      <p className="mt-2 text-[11px] text-slate-600">點標記看預覽，可滾動縮放、拖曳平移。</p>
+      <p className="mt-2 text-[11px] text-slate-600">點標記看預覽，再點一次進詳情。拖曳平移；按住 Ctrl／⌘ 滾動縮放。</p>
     </div>
   );
 }

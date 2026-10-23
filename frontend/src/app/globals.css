@@ -675,21 +675,8 @@ html.landing-no-scrollbar body::-webkit-scrollbar {
   z-index: 20;
   left: 0.5rem;
   right: 0.5rem;
-  bottom: 0.5rem;
+  bottom: 2rem;
   animation: map-pop-in 220ms ease-out both;
-}
-@media (min-width: 640px) {
-  .map-pop {
-    width: 19rem;
-    right: auto;
-    bottom: auto;
-    left: calc(var(--px) + 26px);
-    top: clamp(8px, calc(var(--py) - 120px), calc(100% - 340px));
-  }
-  .map-pop[data-side="l"] {
-    left: auto;
-    right: calc(100% - var(--px) + 26px);
-  }
 }
 @keyframes map-pop-in {
   from {
@@ -706,3 +693,83 @@ html.landing-no-scrollbar body::-webkit-scrollbar {
     animation: none;
   }
 }
+
+/* ---------- MapLibre 地圖：標記與 popup ---------- */
+.sea-pin {
+  position: relative;
+  display: flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  outline: none;
+}
+.sea-pin-body {
+  display: flex;
+  filter: drop-shadow(0 2px 3px rgba(5, 42, 69, 0.45));
+  transition: transform 160ms ease-out;
+}
+.sea-pin.is-hovered .sea-pin-body { transform: scale(1.15); }
+.sea-pin.is-selected .sea-pin-body { transform: scale(1.25); }
+.sea-pin.is-selected::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 0 0 2px #073b5e;
+}
+.sea-pin:focus-visible::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 9999px;
+  border: 2.5px dashed #0b6fa4;
+}
+.sea-pin-pulse {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border-radius: 9999px;
+  opacity: 0.3;
+  animation: sea-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes sea-ping {
+  75%, 100% { transform: scale(1.9); opacity: 0; }
+}
+.sea-pin-label {
+  position: absolute;
+  top: 50%;
+  left: calc(50% + 17px);
+  display: none;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 700;
+  color: #052a45;
+  text-shadow: -1.5px 0 #fff, 1.5px 0 #fff, 0 -1.5px #fff, 0 1.5px #fff, 1px 1px #fff, -1px -1px #fff, 1px -1px #fff, -1px 1px #fff;
+  pointer-events: none;
+}
+.sea-pin-label.is-empty { font-weight: 500; color: #4b6178; }
+.sea-pin.is-hovered .sea-pin-label,
+.sea-pin.is-selected .sea-pin-label { display: block; }
+@media (min-width: 640px) {
+  .sea-map-detail .sea-pin-label { display: block; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sea-pin-pulse { display: none; }
+  .sea-pin-body { transition: none; }
+}
+.sea-popup .maplibregl-popup-content {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 1rem;
+}
+.sea-popup .maplibregl-popup-tip { display: none; }
+.sea-popup { z-index: 5; }
+.maplibregl-ctrl-attrib { font-size: 11px; }
