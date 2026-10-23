@@ -14,6 +14,7 @@ CC BY 4.0 要求標示原作者，所以下面這張表不能刪；同一份標�
 |---|---|---|---|
 | Diver | ucdavisterc | CC BY 4.0 | [Sketchfab](https://sketchfab.com/3d-models/9a415258dec4449c9faf28f11a5b6831) |
 | Animated Swimming Tropical Fish School Loop | LasquetiSpice | CC BY 4.0 | [Sketchfab](https://sketchfab.com/3d-models/62ccf83b35c744d7b5ffb7be80d4ea99) |
+| BarramundiFish（glTF Sample Assets，Microsoft／Khronos Group） | Microsoft | CC0 1.0（公眾領域，不強制標示，仍列出） | [GitHub](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/BarramundiFish) |
 | Atlantic Mackerel (Animated and Game-ready) | 1shxxn | CC BY 4.0 | [Sketchfab](https://sketchfab.com/3d-models/eca6071c26fc4013b8c94a3f37a434c7) |
 | Model 53A - Flatback Sea Turtle | DigitalLife3D | CC BY 4.0 | [Sketchfab](https://sketchfab.com/3d-models/442372b7f02b4730882d41d959726156) |
 | Scalloped Hammerhead Juvenile (LOW POLY) | sharkingaround | CC BY 4.0 | [Sketchfab](https://sketchfab.com/3d-models/f5adc17c922b48feae76aaea98552dd4) |

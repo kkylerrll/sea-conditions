@@ -56,6 +56,7 @@ import {
   type ModelName,
 } from "./models";
 import { buildPlaceholder, addDiverRimShader } from "./placeholders";
+import { applyProceduralSwim, advanceProceduralSwim, type SwimRuntime } from "./swim";
 
 // 世界座標與「公尺深度」的比例：1 個深度公尺＝這麼多三.js 單位。拉開一點
 // （而不是 1:1）是因為 1000m 全部塞進 1:1 的世界座標，遠裁面／濃霧密度會
@@ -470,6 +471,10 @@ type Creature = {
   zFreq: number;
   prevYaw: number;
   scaleBase: number;
+  // round 17：靜態模型的程序化游動（見 swim.ts／models.ts proceduralSwim）；
+  // swimMul 是這一幀的速度倍率，由各移動分支寫入、updateCreatures 尾端消費。
+  swim: SwimRuntime | null;
+  swimMul: number;
   // laneCenterX：車道中心點的水平偏移（預設 0＝置中）——round 7 回饋：
   // 鮟鱇魚放大後桌機版會疊在左側固定文字欄上面,讓牠的車道整個偏到畫面
   // 右側（見 spawnCreatures 怎麼算這個值),不是靠「隨機剛好沒疊到」。
@@ -875,6 +880,8 @@ export class DiveEngine {
       burstOmega: (Math.PI * 2) / (SWIM_BURST_PERIOD_MIN + Math.random() * SWIM_BURST_PERIOD_RANGE),
       zFreq: 0.25 + Math.random() * 0.25,
       prevYaw: 0,
+      swim: null,
+      swimMul: 1,
       scaleBase: SCHOOL_TIMESCALE_BASE_MIN + Math.random() * SCHOOL_TIMESCALE_BASE_RANGE,
       laneWidth: 20,
       laneCenterX: 0,
@@ -1074,6 +1081,10 @@ export class DiveEngine {
           instance.position.sub(offset);
         }
       }
+      // 靜態模型：每個實例各自複製材質並注入彎曲 shader（個體相位偏移用 c.phase）。
+      if (entry.proceduralSwim && target !== this.diver) {
+        target.swim = applyProceduralSwim(instance, entry.proceduralSwim, target.phase);
+      }
       old.clear();
       old.add(instance);
       target.mixer = mixer && target === this.diver ? mixer : mixer ? new THREE.AnimationMixer(instance) : null;
@@ -1200,7 +1211,8 @@ export class DiveEngine {
     // reefClown 的註解),數量分給剩下三種。使用者要求 0~20m 要「數量夠多」
     // （桌機 18~24 條、混合種類）——桌機三種各 7 條＝21 條,手機三種各 4
     // 條＝12 條。
-    const REEF_KINDS: ModelName[] = ["reefTang", "reefMoorish", "reefYellow"];
+    // round 17：reefYellow 換成寫實的 barramundi（CC0 靜態模型＋程序化擺尾）。
+    const REEF_KINDS: ModelName[] = ["reefTang", "reefMoorish", "barramundi"];
     const reefCountPerKind = this.mobile ? 4 : 7;
     for (const kind of REEF_KINDS) {
       const reef = this.spawnInRange(kind, "straight", REEF_RANGE, reefCountPerKind, [-10, -4]);
@@ -2012,6 +2024,7 @@ export class DiveEngine {
     const vx = Math.cos(t * speed) * speed * amp;
     const vel = new THREE.Vector3(vx, 0, 0);
     this.orientToVelocity(c, vel, dt, 0.15);
+    if (c.swim) advanceProceduralSwim(c.swim, dt, 1);
     if (c.mixer) c.mixer.update(dt);
     else this.animatePlaceholderLimbs(c, t, 1);
   }
@@ -2041,6 +2054,7 @@ export class DiveEngine {
       const x = ((raw + laneWidth) % laneWidth) - laneWidth / 2;
       c.root.position.set(x, c.posY, 0);
       this.orientToVelocity(c, vel, dt, 0.25);
+      if (c.swim) advanceProceduralSwim(c.swim, dt, 1);
       if (c.mixer) c.mixer.update(dt);
       else this.animatePlaceholderLimbs(c, t, 1);
     }
@@ -2156,6 +2170,7 @@ export class DiveEngine {
           c.root.quaternion.slerp(this.orientTarget, 1 - Math.exp(-dt / SWIM_ORIENT_TAU));
           // 尾鰭擺動速度跟著當下速度倍率走：衝刺時拍得快、滑行時慢。
           if (c.mixer) c.mixer.timeScale = THREE.MathUtils.clamp(speedMul, SWIM_TIMESCALE_MIN, SWIM_TIMESCALE_MAX);
+          c.swimMul = speedMul;
           break;
         }
         case "school": {
@@ -2182,6 +2197,7 @@ export class DiveEngine {
             const ts = c.scaleBase * (1 + SCHOOL_TIMESCALE_AMP * Math.sin(t * 0.9 + c.phase * 2.1));
             c.mixer.timeScale = THREE.MathUtils.clamp(ts, SWIM_TIMESCALE_MIN, SWIM_TIMESCALE_MAX);
           }
+          c.swimMul = c.scaleBase * (1 + SCHOOL_TIMESCALE_AMP * Math.sin(t * 0.9 + c.phase * 2.1));
           break;
         }
         case "drift":
@@ -2222,6 +2238,7 @@ export class DiveEngine {
         }
       }
 
+      if (c.swim) advanceProceduralSwim(c.swim, dt, c.swimMul);
       if (c.mixer) c.mixer.update(dt);
       else this.animatePlaceholderLimbs(c, t, 1);
     }

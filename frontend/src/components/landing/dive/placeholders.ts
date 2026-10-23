@@ -319,6 +319,7 @@ const BUILDERS: Record<ModelName, () => THREE.Group> = {
   reefTang: () => buildReefFishPlaceholder("reefTang"),
   reefMoorish: () => buildReefFishPlaceholder("reefMoorish"),
   reefYellow: () => buildReefFishPlaceholder("reefYellow"),
+  barramundi: () => buildReefFishPlaceholder("reefYellow"), // 載入前的替代幾何借用黃色礁魚
   mackerel: buildMackerelPlaceholder,
   turtle: buildTurtlePlaceholder,
   hammerhead: buildHammerheadPlaceholder,

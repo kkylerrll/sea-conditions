@@ -15,6 +15,7 @@
 // 的模型，這個 scale 八成要重算，不能直接套用。
 
 import * as THREE from "three";
+import type { ProceduralSwim } from "./swim";
 
 export type ModelName =
   | "diver"
@@ -22,6 +23,7 @@ export type ModelName =
   | "reefTang"
   | "reefMoorish"
   | "reefYellow"
+  | "barramundi"
   | "mackerel"
   | "turtle"
   | "hammerhead"
@@ -87,6 +89,13 @@ export type ModelEntry = {
    * （實測只拿 head 時,身體軸線仍在 -100°～140° 之間亂轉）。
    */
   stripRotationMatch?: string[];
+  /**
+   * 靜態（沒骨架、沒動畫片段）的寫實模型用的程序化游動，見 swim.ts：
+   * 載入時對每個實例的材質注入頂點彎曲 shader，ω 跟著引擎當下速度倍率走。
+   * 有填這個欄位的模型不需要 animationClip（沒有片段時引擎不建 mixer）。
+   * 長軸省略時由 geometry bbox 自動量；headSign 看不出來時用 ?diveDebug=<kind> 確認。
+   */
+  proceduralSwim?: ProceduralSwim;
   /** 模型原始比例跟場景不一致時的統一縮放。 */
   scale: number;
   /** 模型原始朝向跟「往下潛、面朝畫面前方」不一致時的修正角度（弧度）。 */
@@ -231,6 +240,28 @@ export const MODEL_REGISTRY: Record<ModelName, ModelEntry> = {
       license: "CC BY 4.0",
     },
   },
+  // round 17：Khronos glTF-Sample-Assets 的 BarramundiFish（Microsoft，CC0）——
+  // 目前找到唯一「寫實、PBR、免登入可下載」的魚：魚鱗法線貼圖＋AO＋粗糙度，
+  // 2.2k 頂點／3.9k 三角形，原檔 12.5MB（三張 2048 PNG）→ 1024 webp＋meshopt 後 ~310KB。
+  // 亞洲鱸（金目鱸），台灣沿岸也有。沒有骨架也沒有動畫，靠 proceduralSwim 擺尾。
+  // 原始 bbox：x -0.069~0.074、y 0~0.287、z -0.325~0.318（單位公尺，體長 0.64），
+  // 長軸 z、頭朝 +z（引擎的 lookAt 讓模型 +Z 對準前進方向，所以 travelYaw=0）。
+  // scale 3.4 → 體長約 2.2 單位（跟 2.5× 礁魚、3.5 單位鯖魚同一個量級）。
+  barramundi: {
+    path: "/landing/models/barramundi.glb",
+    scale: 3.4,
+    rotationOffset: new THREE.Euler(0, 0, 0),
+    travelYaw: 0,
+    depthM: 8,
+    animationClip: "",
+    proceduralSwim: { headSign: 1, amp: 0.05, wavelength: 1.1, style: "subcarangiform" },
+    credit: {
+      title: "BarramundiFish (glTF Sample Assets)",
+      author: "Microsoft / Khronos Group",
+      url: "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/BarramundiFish",
+      license: "CC0 1.0",
+    },
+  },
   mackerel: {
     path: "/landing/models/mackerel.glb",
     // round 11：Swimming clip 量出來有 2 條 translation track 掛在非根骨頭
@@ -368,6 +399,7 @@ export const CREATURE_RIM_FLOOR: Partial<Record<ModelName, { color: number; max:
   reefTang: { color: 0xbfe9ff, max: 0.18 },
   reefMoorish: { color: 0xbfe9ff, max: 0.18 },
   reefYellow: { color: 0xbfe9ff, max: 0.18 },
+  barramundi: { color: 0xbfe9ff, max: 0.18 },
   mackerel: { color: 0xbfe9ff, max: 0.3 },
   turtle: { color: 0xbfe9ff, max: 0.08 },
   hammerhead: { color: 0xbfe9ff, max: 0.08 },

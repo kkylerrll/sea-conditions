@@ -515,3 +515,9 @@ npm run build
 - 首頁捲動更順：ScrollScene 啟用 Lenis 1.3.11（`lerp: 0.07`、`smoothWheel`、`syncTouch: false`、`autoRaf`），只在 `.progress-armed` 成立時建立、卸載即 destroy；引擎的 `SCROLL_SMOOTH_TIME` 由 0.8 降到 0.25 s，避免雙重平滑的遲滯。
 - 首頁隱藏捲軸：掛載時 `<html>` 加 `landing-no-scrollbar`（CSS 在 globals.css），卸載移除，其他頁面不受影響。
 - `next.config.mjs` 新增 `NEXT_DIST_DIR` 覆寫，可在 dev server 運行時用別的目錄 build。
+
+## 第十七輪
+
+- 寫實魚類來源調查：Smithsonian 3D（CC0）只有保存標本（鯊魚下顎、乾燥河豚／箱魨，貼圖偏暗褐，不適用）；Poly Haven、three.js examples 沒有魚。唯一可用的是 Khronos glTF-Sample-Assets 的 **BarramundiFish（CC0，亞洲鱸）**——PBR 魚鱗法線＋AO，3.9k 三角形，12.5MB → `optimize --texture-compress webp --texture-size 1024` 後約 310KB（`public/landing/models/barramundi.glb`）。
+- 新增 `dive/swim.ts`：靜態模型的程序化游動（`onBeforeCompile` 頂點彎曲，carangiform／subcarangiform／flap 三種風格，法線近似跟著彎；每實例複製材質＋各自相位，ω 由 `c.swimMul`（引擎當下速度倍率）累加相位）。`models.ts` 新欄位 `proceduralSwim`（axis 可省略，載入時自動量；headSign 必填）。有骨架的模型（目前的海龜是 SkinnedMesh）不套用，維持原有動畫＋roll 搖擺。
+- 場景：REEF_KINDS 的 `reefYellow` 換成 `barramundi`；其餘物種沒有更好的免登入來源，維持原模型。海龜／鯊魚／小丑魚等需要 Sketchfab 下載（要 token）才有寫實替代，候選清單見 /tmp/claude-501/fish/shortlist.md；下載後直接 `proceduralSwim` 填進 models.ts 即可。

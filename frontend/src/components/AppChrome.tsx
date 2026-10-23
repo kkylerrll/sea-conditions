@@ -74,7 +74,8 @@ export default function AppChrome({
             <p>海況資料僅供參考，下水前請以現場狀況與官方沿岸預報為準。</p>
             <p className="mt-2 opacity-70">
               首頁 3D 模型：ucdavisterc、LasquetiSpice、1shxxn、DigitalLife3D、sharkingaround、
-              Abby_Holzworth1、n-（CC BY 4.0），來源 Sketchfab。
+              Abby_Holzworth1、n-（CC BY 4.0），來源 Sketchfab；
+              亞洲鱸：BarramundiFish by Microsoft／Khronos glTF Sample Assets（CC0）。
             </p>
             <p className="mt-1 opacity-70">
               海面：Ocean · WebGPU by hirakujira (CodePen, MIT)。
