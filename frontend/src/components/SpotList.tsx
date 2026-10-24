@@ -13,9 +13,9 @@ import {
 import type { Spot } from "@/lib/types";
 
 const LEVEL_COLOR: Record<string, string> = {
-  beginner: "bg-emerald-50 text-emerald-700",
-  intermediate: "bg-amber-50 text-amber-700",
-  advanced: "bg-rose-50 text-rose-700",
+  beginner: "bg-emerald-50 text-emerald-800",
+  intermediate: "bg-amber-50 text-amber-800",
+  advanced: "bg-rose-50 text-rose-800",
 };
 
 function SpotRow({ spot }: { spot: Spot }) {
@@ -27,10 +27,10 @@ function SpotRow({ spot }: { spot: Spot }) {
   ].filter(Boolean);
 
   return (
-    <li className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <li className="card-clean p-4">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <h3 className="text-sm font-bold text-slate-900">{spot.name}</h3>
-        {spot.name_en && <span className="text-[11px] text-slate-400">{spot.name_en}</span>}
+        {spot.name_en && <span className="text-[11px] text-slate-500">{spot.name_en}</span>}
         {spot.level && (
           <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${LEVEL_COLOR[spot.level] ?? "bg-slate-100 text-slate-600"}`}>
             {LEVEL_ZH[spot.level] ?? spot.level}
@@ -40,14 +40,14 @@ function SpotRow({ spot }: { spot: Spot }) {
 
       <div className="mt-1.5 flex flex-wrap gap-1">
         {spot.activities.map((a) => (
-          <span key={a} className="rounded bg-sky-50 px-1.5 py-0.5 text-[11px] text-sky-700">
+          <span key={a} className="rounded bg-ocean-50 px-1.5 py-0.5 text-[11px] text-ocean-700">
             {ACTIVITY_ZH[a] ?? a}
           </span>
         ))}
       </div>
 
       {meta.length > 0 && (
-        <p className="mt-2 text-xs text-slate-500">{meta.join(" · ")}</p>
+        <p className="mt-2 text-xs text-slate-600">{meta.join(" · ")}</p>
       )}
 
       {spot.blurb && <p className="mt-1.5 text-xs leading-relaxed text-slate-600">{spot.blurb}</p>}
@@ -56,7 +56,7 @@ function SpotRow({ spot }: { spot: Spot }) {
         href={directionsUrl(spot.lat, spot.lon)}
         target="_blank"
         rel="noopener noreferrer"
-        className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-sky-600 hover:underline"
+        className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-ocean-600 hover:underline"
       >
         <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
           <path d="M10 2C6.7 2 4 4.7 4 8c0 4.2 5.3 9.4 5.6 9.7a.6.6 0 0 0 .8 0C10.7 17.4 16 12.2 16 8c0-3.3-2.7-6-6-6Zm0 8.2A2.2 2.2 0 1 1 10 5.8a2.2 2.2 0 0 1 0 4.4Z" />
@@ -65,7 +65,7 @@ function SpotRow({ spot }: { spot: Spot }) {
       </a>
 
       {spot.coord_approx && (
-        <p className="mt-1.5 text-[11px] text-slate-400">※ 座標為約略位置，尚待校正</p>
+        <p className="mt-1.5 text-[11px] text-slate-500">※ 座標為約略位置，尚待校正</p>
       )}
     </li>
   );
@@ -77,7 +77,7 @@ export default function SpotList({ spots }: { spots?: Spot[] }) {
 
   return (
     <section>
-      <h2 className="mb-2 text-sm font-bold text-slate-500">
+      <h2 className="section-title">
         這個地區的下水點（{spots.length}）
       </h2>
       <ul className="space-y-2">
@@ -85,7 +85,7 @@ export default function SpotList({ spots }: { spots?: Spot[] }) {
           <SpotRow key={s.slug} spot={s} />
         ))}
       </ul>
-      <p className="mt-2 text-[11px] text-slate-400">
+      <p className="mt-2 text-[11px] text-slate-500">
         上方海況為整個地區的預報；各點實際浪況會因朝向與遮蔽而不同，之後會分別標示。
       </p>
     </section>

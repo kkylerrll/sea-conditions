@@ -18,6 +18,7 @@
 //
 // prefers-reduced-motion 開啟或 JS 沒跑時，.progress-armed 不會掛上去，上面所有東西
 // 都不生效，版面退回一般的垂直長頁，內容全部可見——不會有任何東西卡在 opacity: 0。
+import Lenis from "lenis";
 import { useEffect, useRef } from "react";
 import { depthAt } from "./depth";
 import { diveState } from "./diveState";
@@ -144,6 +145,15 @@ export default function ScrollScene({ children }: { children: React.ReactNode })
 
     updateProgress();
     root.classList.add("progress-armed");
+
+    // 只在首頁（且沒開 reduced-motion、JS 有跑，即 .progress-armed 成立時）啟用：
+    // Lenis 讓滾輪捲動有慣性滑行；觸控維持原生（syncTouch: false），不跟手機的
+    // 慣性捲動打架。autoRaf 讓它自己跑一個 rAF（動畫中才需要逐幀推進），捲動位置
+    // 仍是真的 window.scrollY，上面的進度／速度／方向計算完全不用改。
+    // 卸載時 destroy，/explore、/spots 回到瀏覽器原生捲動。
+    const lenis = new Lenis({ lerp: 0.07, smoothWheel: true, syncTouch: false, autoRaf: true });
+    // 首頁隱藏捲軸（捲動功能照舊：滾輪、觸控、鍵盤都有效），離開時移除。
+    document.documentElement.classList.add("landing-no-scrollbar");
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", onScroll, { passive: true });
 
@@ -172,6 +182,8 @@ export default function ScrollScene({ children }: { children: React.ReactNode })
       // 已經脫離文件的節點寫樣式。
       decaying = false;
       observer?.disconnect();
+      lenis.destroy();
+      document.documentElement.classList.remove("landing-no-scrollbar");
     };
   }, []);
 

@@ -206,20 +206,24 @@ export default function Sidebar({
           onClick={onNavigate}
         />
       </nav>
-      <div className="mt-3 border-t border-slate-100 px-2 pt-3">
-        {!collapsedMode && (
-          <p className="px-3 pb-1.5 text-xs font-semibold text-slate-400">
-            13 個地區 · {ACTIVITY_KIND_ZH[activity]}
-          </p>
-        )}
-        <RegionList
-          locations={locations}
-          activity={activity}
-          pathname={pathname}
-          collapsed={collapsedMode}
-          onNavigate={onNavigate}
-        />
-      </div>
+      {/* 地區清單只在詳情頁出現（方便在地區間跳轉）；/explore 的地圖與右側清單已經是同一份，
+          側欄不再重複列一次。 */}
+      {pathname.startsWith("/spots/") && (
+        <div className="mt-3 border-t border-slate-100 px-2 pt-3">
+          {!collapsedMode && (
+            <p className="px-3 pb-1.5 text-xs font-semibold text-slate-500">
+              13 個地區 · {ACTIVITY_KIND_ZH[activity]}
+            </p>
+          )}
+          <RegionList
+            locations={locations}
+            activity={activity}
+            pathname={pathname}
+            collapsed={collapsedMode}
+            onNavigate={onNavigate}
+          />
+        </div>
+      )}
     </>
   );
 

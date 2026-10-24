@@ -33,6 +33,43 @@
 
 ---
 
+## 第十三輪：從海面開始、緩慢連續下沉（2026-10-20，使用者尚未肉眼確認）
+
+需求：首頁一開始就站在更平靜的海面上，往下捲才慢慢沉進水裡，潛水員與生物在水下才出現；
+不能有場景切換、交叉淡入感。參考 CodePen "Ocean · WebGPU" by hirakujira（MIT）。
+
+**架構（`dive/ocean/`，同一個 three.js 渲染器、同一台攝影機，沒有第二個 canvas）**
+- `config.ts` 所有可調常數（海況、太陽、浮標、水線）。`spectrum.ts` CPU 產生 JONSWAP＋獨立長湧浪的 h0，
+  並提供 CPU 端低通波高取樣（浮標／水線用）。`fftOcean.ts` GPU：時間演化 → 水平／垂直各 log2(N) 個
+  Stockham stage pass（浮點 ping-pong，三個 cascade 並排在 3N×N 圖集）→ 逐 cascade 輸出位移＋泡沫、
+  導數（RGBA16F，帶 mipmap）。`shaders.ts` 全部 GLSL（逐段對照原作 WGSL）。`oceanWorld.ts` 組裝：
+  海面極座標格網、天空穹頂、大氣烘焙、浮標彈簧、水線 uniform。`gerstner.ts` 降級波組。
+- 水線：鏡頭是半徑 `DOME_RADIUS_M` 的防水罩。視線 y 分量在水線以上走空氣側（天空＋由上往下看的海面），
+  以下走水側（水下背景＋由下往上看的 Snell 窗／全反射）。下沉時水線連續掃過畫面，無切換。
+  水下背景改由穹頂依視線方向畫（同一組 `DEPTH_GRADIENT_STOPS` 色票），與舊的畫面漸層在水平視角一致。
+- `depth.ts`：浮標段（0→0.06）→ 三次 Hermite 下沉（→0.22，5 m，C1 接合）→ 指數下潛 5→1000 m
+  （每單位捲動的 ln(深度) 變化率大致固定，沒有舊版三次方暴衝）。`remapLegacyProgress()` 把舊的生物
+  進度區間線性搬進下潛段並夾在 4 m 之後。`environmentDarkness` 改成兩個指數相加（平滑）。
+- `cameraPath.ts`：俯仰角關鍵影格（略低頭 → 下沉時低頭 → 沒入水後抬頭回望 Snell 窗 → 轉水平）、
+  潛水員入場區間（`DIVER_INTRO_*`，從右側外上方游入，位置用螢幕比例反推，不受鏡頭俯仰影響）。
+- `engine.ts`：讀「平滑後進度」（臨界阻尼彈簧，`SCROLL_SMOOTH_TIME`=0.8），章節文字仍吃原始進度；
+  生物 Y 不超過 `CREATURE_CEILING_Y`、氣泡到水面破掉、潛水員不出水面。
+- 降級：沒有 `EXT_color_buffer_float` 或 `isMobileSpec()` → Gerstner×12（同一套 shader）；連半精度可繪製
+  貼圖都沒有 → 不建海面（退回水下版）；海面 shader 編譯失敗 → 自動關掉海面（`onShaderError`）。
+  除錯：網址 `?ocean=gerstner|fft|fft128`。reduced-motion／無 WebGL 仍走 CSS 漸層。
+- CSS：章節軌道 100vh→135vh／章；`.dive-scrim` 隨 `--progress` 由 0.4 淡入到 1；章節 00 文字加柔邊陰影。
+
+**要調的常數**：風速 `WIND`、風區 `FETCH`、`AMP_SCALE`（`ocean/config.ts`，`estimateHs()` 目前約 0.42 m
+= 風浪 0.26＋湧浪 0.32）；FFT 大小（`oceanWorld.ts` N，256／`?ocean=fft128`）；水面段 `SURFACE_HOLD`／
+`SURFACE_END`／`SURFACE_END_DEPTH_M`／`DEEP_K`（`depth.ts`）；平滑 `SCROLL_SMOOTH_TIME`（`engine.ts`）；
+太陽 `SUN_ELEVATION`／`SUN_AZIMUTH`、雲量 `CLOUD_LO/HI`；泡沫 `FOAM_JAC/GAIN`；`DOME_RADIUS_M`。
+
+**驗證狀況（誠實）**：tsc、build 通過；GLSL 以 glslangValidator 檢查語法通過；FFT index 數學與浮標取樣用
+CPU 模擬對照直接 DFT（誤差 ~1e-16／1e-9）。**沒有在真實 GPU 上跑過、沒有看過畫面**——
+水線、Snell 窗亮度、天空色調、泡沫量、鏡頭劇本（`PITCH_KEYS`）都需要使用者肉眼調。
+
+---
+
 ## 一、使用者要的是什麼，以及三輪回饋
 
 **核心要求：捲動的時候，看到的是同一個潛水員持續下潛，不同深度出現不同魚
@@ -472,3 +509,33 @@ npm run build
   覆寫技巧＋截圖觸發，純粹呼叫 `window.scrollTo` 不夠
 - 截圖偶爾會抓到整片空白或前一個狀態的影格，那是擷取瑕疵不是頁面壞掉——
   稍微等一下或多截一張再看
+
+## 第十四輪
+
+- 首頁捲動更順：ScrollScene 啟用 Lenis 1.3.11（`lerp: 0.07`、`smoothWheel`、`syncTouch: false`、`autoRaf`），只在 `.progress-armed` 成立時建立、卸載即 destroy；引擎的 `SCROLL_SMOOTH_TIME` 由 0.8 降到 0.25 s，避免雙重平滑的遲滯。
+- 首頁隱藏捲軸：掛載時 `<html>` 加 `landing-no-scrollbar`（CSS 在 globals.css），卸載移除，其他頁面不受影響。
+- `next.config.mjs` 新增 `NEXT_DIST_DIR` 覆寫，可在 dev server 運行時用別的目錄 build。
+
+## 第十七輪
+
+- 寫實魚類來源調查：Smithsonian 3D（CC0）只有保存標本（鯊魚下顎、乾燥河豚／箱魨，貼圖偏暗褐，不適用）；Poly Haven、three.js examples 沒有魚。唯一可用的是 Khronos glTF-Sample-Assets 的 **BarramundiFish（CC0，亞洲鱸）**——PBR 魚鱗法線＋AO，3.9k 三角形，12.5MB → `optimize --texture-compress webp --texture-size 1024` 後約 310KB（`public/landing/models/barramundi.glb`）。
+- 新增 `dive/swim.ts`：靜態模型的程序化游動（`onBeforeCompile` 頂點彎曲，carangiform／subcarangiform／flap 三種風格，法線近似跟著彎；每實例複製材質＋各自相位，ω 由 `c.swimMul`（引擎當下速度倍率）累加相位）。`models.ts` 新欄位 `proceduralSwim`（axis 可省略，載入時自動量；headSign 必填）。有骨架的模型（目前的海龜是 SkinnedMesh）不套用，維持原有動畫＋roll 搖擺。
+- 場景：REEF_KINDS 的 `reefYellow` 換成 `barramundi`；其餘物種沒有更好的免登入來源，維持原模型。海龜／鯊魚／小丑魚等需要 Sketchfab 下載（要 token）才有寫實替代，候選清單見 /tmp/claude-501/fish/shortlist.md；下載後直接 `proceduralSwim` 填進 models.ts 即可。
+
+## 第十九輪：其餘生物全部換成寫實 Sketchfab 模型（使用者尚未肉眼確認）
+
+- 來源（全部 CC BY 4.0，下載前以 `GET /v3/models/<uid>` 重新核對授權；作者／網址見 `public/landing/CREDITS.md` 與 `dive/models.ts` 的 `credit`）：
+  小丑魚 zixisun02（static，proceduralSwim）、珠蝶魚 Dsanchez13（static，proceduralSwim，取代 reef-school 的藍倒吊／角蝴蝶魚）、
+  黃鰭鮪 GoldenZtuff（骨架＋Swim 動畫，取代鯖魚當魚群）、綠蠵龜 alvaniLa（static 掃描，原 56k 面→25k，`flap` 程序化拍鰭）、
+  鎚頭鯊 kenchoo（骨架動畫）、鮟鱇魚 Poshel（單一 mesh＋morph 動畫）、月亮水母 n-（骨架動畫）。
+- 移除：reef-school.glb（LasquetiSpice）、mackerel.glb（1shxxn）、舊海龜／舊鎚頭鯊／舊鮟鱇魚／舊水母（DigitalLife3D／sharkingaround／Abby_Holzworth1／n- Crystal）。
+  `ModelName` 的 reef* 與 mackerel 項目已刪（`ModelEntry.reefMeshIndex` 等欄位與 engine 裡 reef 專用函式留著，目前沒有模型使用）。
+- 壓縮：沿用上面指令（海龜先 `metalrough`＋`--simplify-ratio 0.45`；其餘 `optimize --simplify false`，小魚 webp 512、海龜／鎚頭鯊 1024）。
+  九個 glb 合計約 2.9 MB（diver 345K、barramundi 310K、clownfish 81K、butterflyfish 124K、tuna 360K、turtle 260K、hammerhead 434K、anglerfish 649K、jellyfish 446K）。
+- 水母原檔場景有一個 84 面的 `Cube_0` 道具（縮圖上飄的方塊）：用 `@gltf-transform/core` 刪節點後 `prune` 再 optimize，成品沒有方塊。
+- 鎚頭鯊的烘焙動畫根骨 `IK_Back_Bone_01` rotation 與綁定姿勢差 ~90°（會翻肚皮朝鏡頭）→ `stripRotationMatch: ["IK_Back_Bone_01_jnt_"]`；朝向 `travelYaw=π/2`（頭在 -x）。
+  珠蝶魚同為頭在 -x（`travelYaw=π/2`、`headSign=-1`）。海龜長軸要明確寫 `axis: "z"`（bbox 最長的是展開的前鰭 x，自動量會選錯）。
+- 鮟鱇魚新模型沒有 `Esca7_07` 骨頭：`attachAnglerfishLure()` 改成找實例本地 y 最高頂點（誘餌球泡）掛 emissive 小球。
+- 場景：REEF_KINDS＝clownfish／butterflyfish／barramundi；school 改 tuna（桌機 20／手機 10 隻）；海龜 TURTLE_RANGE、鎚頭鯊 DROP_RANGE、鮟鱇魚／水母深度不變。
+- 除錯：`?diveDebug=<clownfish|butterflyfish|barramundi|tuna|turtle|hammerhead|anglerfish|jellyfish>`；截圖在 /tmp/claude-501/shots/fish-final-*.png。
+- 未驗證：整頁捲動時的游動手感（只用 swiftshader 單物種截圖看過朝向／比例／彎曲）、手機效能（tuna 骨架 ×10、鮟鱇魚 morph）。

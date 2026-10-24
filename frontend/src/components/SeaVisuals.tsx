@@ -56,27 +56,26 @@ export function SeaStateHero({
 
   return (
     <div
-      className="relative overflow-hidden rounded-3xl border shadow-sm"
-      style={{ borderColor: col.base, background: col.soft }}
+      className="card-clean relative overflow-hidden rounded-3xl"
     >
       <div className="relative z-10 flex items-end justify-between gap-4 p-5 pb-24">
         <div>
-          <p className="text-xs font-medium" style={{ color: col.text }}>
+          <p className="text-xs font-semibold tracking-wide text-ocean-700">
             今日海面
           </p>
           <p className="mt-1 flex items-baseline gap-1">
-            <span className="text-5xl font-extrabold tabular-nums text-slate-900">
+            <span className="text-6xl font-bold tabular-nums text-slate-800">
               {h == null ? "—" : h.toFixed(1)}
             </span>
-            <span className="text-lg font-bold text-slate-500">m</span>
+            <span className="text-lg font-semibold text-slate-600">m</span>
           </p>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-slate-600">
             湧浪週期 {c.wave_period_s == null ? "—" : `約 ${Math.round(c.wave_period_s)} 秒一波`}
             {c.wave_dir ? ` · 來向 ${compassZh(c.wave_dir)}（${c.wave_dir}）` : ""}
           </p>
           {c.visibility_m != null && (
-            <p className="mt-2 max-w-[15rem] text-[11px] leading-snug text-slate-400">
-              水下能見度約 <span className="font-semibold text-slate-500">{c.visibility_m} m</span>
+            <p className="mt-2 max-w-[15rem] text-xs leading-snug text-slate-600">
+              水下能見度約 <span className="font-semibold text-slate-700">{c.visibility_m} m</span>
               <br />
               由浪高換算的粗估值，非現場觀測
             </p>
@@ -84,7 +83,7 @@ export function SeaStateHero({
         </div>
         <span
           className="mb-1 inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-sm font-semibold"
-          style={{ background: "#fff", color: col.text }}
+          style={{ background: col.soft, color: col.text }}
         >
           <span className="h-2 w-2 rounded-full" style={{ background: col.base }} />
           {activityLabel ? `${activityLabel}・${col.label}` : col.label}
@@ -95,13 +94,13 @@ export function SeaStateHero({
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28">
         <svg viewBox={`0 0 ${W / 2} 160`} preserveAspectRatio="none" className="h-full w-full" aria-hidden="true">
           <g className="sea-wave" style={{ animationDuration: `${dur * 1.6}s` }}>
-            <path d={sineWavePath(W, amp * 0.6, 90, 60)} fill={col.base} fillOpacity="0.25" />
+            <path d={sineWavePath(W, amp * 0.6, 90, 60)} fill="#0B6FA4" fillOpacity="0.10" />
           </g>
           <g className="sea-wave" style={{ animationDuration: `${dur * 1.15}s` }}>
-            <path d={sineWavePath(W, amp * 0.85, 180, 74)} fill={col.base} fillOpacity="0.4" />
+            <path d={sineWavePath(W, amp * 0.85, 180, 74)} fill="#0B6FA4" fillOpacity="0.18" />
           </g>
           <g className="sea-wave" style={{ animationDuration: `${dur}s` }}>
-            <path d={sineWavePath(W, amp, 120, 92)} fill={col.base} fillOpacity="0.65" />
+            <path d={sineWavePath(W, amp, 120, 92)} fill="#0B6FA4" fillOpacity="0.30" />
           </g>
         </svg>
       </div>
@@ -135,12 +134,12 @@ export function ActivityRatings({
           >
             <div className="flex items-center gap-2">
               <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: col.base }} />
-              <span className="text-sm font-bold text-slate-900">{ACTIVITY_KIND_ZH[k]}</span>
+              <span className="text-sm font-semibold text-slate-800">{ACTIVITY_KIND_ZH[k]}</span>
               <span className="text-xs font-semibold" style={{ color: col.text }}>
                 {col.label}
               </span>
             </div>
-            {reason && <p className="mt-1 text-xs leading-snug text-slate-500">{reason}</p>}
+            {reason && <p className="mt-1 text-xs leading-snug text-slate-600">{reason}</p>}
           </div>
         );
       })}
@@ -150,7 +149,7 @@ export function ActivityRatings({
 
 /* ══════════ 2. 風羅盤 ══════════ */
 
-export function WindCompass({ c }: { c: Condition }) {
+export function WindCompass({ c, className = "" }: { c: Condition; className?: string }) {
   const deg = windFromDeg(c.wind_dir); // 風「來自」的方位
   const scale = c.wind_scale;
   const arrowLen = scale == null ? 30 : clamp(lerp(24, 52, scale / 7), 24, 52);
@@ -161,11 +160,11 @@ export function WindCompass({ c }: { c: Condition }) {
   const cy = 80;
 
   return (
-    <figure className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <figcaption className="text-xs font-medium text-slate-500">風</figcaption>
+    <figure className={`card-clean p-4 sm:p-5 ${className}`}>
+      <figcaption className="text-sm font-bold tracking-wide text-ocean-700">風</figcaption>
       <div className="mt-1 flex items-center gap-4">
         <svg viewBox="0 0 160 160" className="h-28 w-28 shrink-0" aria-hidden="true">
-          <circle cx={cx} cy={cy} r={R} fill="#f8fafc" stroke="#e2e8f0" strokeWidth="2" />
+          <circle cx={cx} cy={cy} r={R} fill="#FBF8F3" stroke="#B3D6E8" strokeWidth="2" />
           {[0, 90, 180, 270].map((a) => {
             const rad = (a * Math.PI) / 180;
             return (
@@ -175,15 +174,15 @@ export function WindCompass({ c }: { c: Condition }) {
                 y1={cy - Math.cos(rad) * (R - 8)}
                 x2={cx + Math.sin(rad) * R}
                 y2={cy - Math.cos(rad) * R}
-                stroke="#cbd5e1"
+                stroke="#B3D6E8"
                 strokeWidth="2"
               />
             );
           })}
-          <text x={cx} y={cy - R + 14} textAnchor="middle" fontSize="11" fontWeight="700" fill="#64748b">北</text>
-          <text x={cx} y={cy + R - 6} textAnchor="middle" fontSize="11" fill="#94a3b8">南</text>
-          <text x={cx + R - 5} y={cy + 4} textAnchor="middle" fontSize="11" fill="#94a3b8">東</text>
-          <text x={cx - R + 5} y={cy + 4} textAnchor="middle" fontSize="11" fill="#94a3b8">西</text>
+          <text x={cx} y={cy - R + 14} textAnchor="middle" fontSize="12" fontWeight="700" fill="#B8442B">北</text>
+          <text x={cx} y={cy + R - 6} textAnchor="middle" fontSize="11" fill="#095A86">南</text>
+          <text x={cx + R - 5} y={cy + 4} textAnchor="middle" fontSize="11" fill="#095A86">東</text>
+          <text x={cx - R + 5} y={cy + 4} textAnchor="middle" fontSize="11" fill="#095A86">西</text>
 
           {deg != null ? (
             <g transform={`rotate(${deg} ${cx} ${cy})`}>
@@ -196,16 +195,19 @@ export function WindCompass({ c }: { c: Condition }) {
               <circle cx={cx} cy={cy} r={3.5} fill={arrowCol} />
             </g>
           ) : (
-            <text x={cx} y={cy + 4} textAnchor="middle" fontSize="11" fill="#94a3b8">無風向</text>
+            <text x={cx} y={cy + 4} textAnchor="middle" fontSize="11" fill="#64748b">無風向</text>
           )}
         </svg>
 
         <div className="min-w-0">
-          <p className="text-2xl font-extrabold tabular-nums text-slate-900">
+          <p className="text-2xl font-bold tabular-nums text-slate-800">
             {scale == null ? "—" : `${scale} 級`}
+            {c.wind_speed_ms != null && (
+              <span className="ml-1.5 text-sm font-semibold text-slate-600">{c.wind_speed_ms} m/s</span>
+            )}
           </p>
-          <p className="text-sm text-slate-600">{windDirZh(c.wind_dir)}</p>
-          <p className="mt-1 text-xs text-slate-400">
+          <p className="text-sm font-medium text-ocean-700">{windDirZh(c.wind_dir)}</p>
+          <p className="mt-1 text-xs text-slate-600">
             {windDesc(scale)}
             {c.gust_ms != null ? ` · 陣風 ${c.gust_ms} m/s` : ""}
           </p>
@@ -217,13 +219,13 @@ export function WindCompass({ c }: { c: Condition }) {
 
 /* ══════════ 3. 潮汐曲線 ══════════ */
 
-export function TideCurve({ c }: { c: Condition }) {
+export function TideCurve({ c, className = "" }: { c: Condition; className?: string }) {
   const highs = parseTideTimes(c.tide_high, "high");
   const lows = parseTideTimes(c.tide_low, "low");
   const ext = [...highs, ...lows].sort((a, b) => a.minutes - b.minutes);
 
   const W = 380;
-  const H = 150;
+  const H = 162;
   const PADX = 16;
   const BASE = H - 22;
   const yHigh = 34;
@@ -232,9 +234,9 @@ export function TideCurve({ c }: { c: Condition }) {
 
   if (ext.length === 0) {
     return (
-      <figure className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <figcaption className="text-xs font-medium text-slate-500">潮汐</figcaption>
-        <p className="mt-6 text-center text-sm text-slate-400">此地無潮汐預報資料</p>
+      <figure className={`card-clean p-4 sm:p-5 ${className}`}>
+        <figcaption className="text-sm font-bold tracking-wide text-ocean-700">潮汐</figcaption>
+        <p className="mt-6 text-center text-sm text-slate-500">此地無潮汐預報資料</p>
       </figure>
     );
   }
@@ -263,36 +265,36 @@ export function TideCurve({ c }: { c: Condition }) {
   const nowX = xOf(nowMinutesTaipei());
 
   return (
-    <figure className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <figcaption className="text-xs font-medium text-slate-500">潮汐（今日）</figcaption>
+    <figure className={`card-clean p-4 sm:p-5 ${className}`}>
+      <figcaption className="text-sm font-bold tracking-wide text-ocean-700">潮汐（今日）</figcaption>
       <svg viewBox={`0 0 ${W} ${H}`} className="mx-auto mt-1 w-full max-w-[560px]" role="img" aria-label="今日潮汐時間曲線">
         <defs>
           <linearGradient id="tideFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.28" />
-            <stop offset="100%" stopColor="#38bdf8" stopOpacity="0" />
+            <stop offset="0%" stopColor="#0B6FA4" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="#0B6FA4" stopOpacity="0" />
           </linearGradient>
         </defs>
 
         {[0, 6, 12, 18, 24].map((hr) => (
           <g key={hr}>
-            <line x1={xOf(hr * 60)} y1={16} x2={xOf(hr * 60)} y2={BASE} stroke="#f1f5f9" strokeWidth="1" />
-            <text x={xOf(hr * 60)} y={H - 6} textAnchor="middle" fontSize="11" fill="#cbd5e1">
+            <line x1={xOf(hr * 60)} y1={16} x2={xOf(hr * 60)} y2={BASE} stroke="#D9EAF4" strokeWidth="1" />
+            <text x={xOf(hr * 60)} y={H - 6} textAnchor="middle" fontSize="11" fill="#64748b">
               {hr}時
             </text>
           </g>
         ))}
 
         <path d={`${d} L ${xOf(1440)} ${BASE} L ${xOf(0)} ${BASE} Z`} fill="url(#tideFill)" />
-        <path d={d} fill="none" stroke="#0ea5e9" strokeWidth="2.5" strokeLinecap="round" />
+        <path d={d} fill="none" stroke="#0B6FA4" strokeWidth="2.5" strokeLinecap="round" />
 
         {ext.map((e, i) => (
           <g key={i} transform={`translate(${xOf(e.minutes)}, ${e.kind === "high" ? yHigh : yLow})`}>
-            <circle r={4} fill="#0284c7" />
+            <circle r={4} fill="#0B6FA4" />
             <text
               y={e.kind === "high" ? -22 : 32}
               textAnchor="middle"
               fontSize="10"
-              fill="#94a3b8"
+              fill="#64748b"
             >
               {e.kind === "high" ? "滿潮" : "乾潮"}
             </text>
@@ -301,7 +303,7 @@ export function TideCurve({ c }: { c: Condition }) {
               textAnchor="middle"
               fontSize="12"
               fontWeight="700"
-              fill="#0f172a"
+              fill="#1e293b"
             >
               {e.label}
             </text>
@@ -310,14 +312,14 @@ export function TideCurve({ c }: { c: Condition }) {
 
         {nowX >= PADX && nowX <= W - PADX && (
           <g transform={`translate(${nowX}, 0)`}>
-            <line x1={0} y1={14} x2={0} y2={BASE} stroke="#f43f5e" strokeWidth="1.5" strokeDasharray="3 3" />
+            <line x1={0} y1={14} x2={0} y2={BASE} stroke="#F2785C" strokeWidth="1.5" strokeDasharray="3 3" />
             <text
               x={nowX > W - 60 ? -5 : 5}
               y={22}
               textAnchor={nowX > W - 60 ? "end" : "start"}
               fontSize="11"
               fontWeight="700"
-              fill="#f43f5e"
+              fill="#B8442B"
             >
               現在
             </text>
@@ -330,7 +332,7 @@ export function TideCurve({ c }: { c: Condition }) {
 
 /* ══════════ 4. 水溫計 ══════════ */
 
-export function TempGauge({ c }: { c: Condition }) {
+export function TempGauge({ c, className = "" }: { c: Condition; className?: string }) {
   const t = c.water_temp_c;
   const lo = 16;
   const hi = 32;
@@ -341,22 +343,31 @@ export function TempGauge({ c }: { c: Condition }) {
   const { suit, note } = wetsuitAdvice(t);
 
   return (
-    <figure className="flex gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <svg viewBox="0 0 56 160" className="h-32 w-12 shrink-0" aria-hidden="true">
-        <rect x={20} y={tubeTop} width={16} height={tubeBot - tubeTop} rx={8} fill="#f1f5f9" />
+    <figure className={`flex gap-4 card-clean p-4 sm:p-5 ${className}`}>
+      <svg viewBox="0 0 64 160" className="h-32 w-14 shrink-0" aria-hidden="true">
+        <rect x={20} y={tubeTop} width={16} height={tubeBot - tubeTop} rx={8} fill="#EEF6FB" />
         {t != null && (
-          <rect x={20} y={level} width={16} height={tubeBot - level} rx={8} fill="#0ea5e9" />
+          <rect x={20} y={level} width={16} height={tubeBot - level} rx={8} fill="#0B6FA4" />
         )}
-        <circle cx={28} cy={138} r={14} fill={t == null ? "#cbd5e1" : "#0284c7"} />
-        <rect x={24} y={110} width={8} height={30} fill={t == null ? "#cbd5e1" : "#0284c7"} />
+        {[16, 24, 32].map((v) => {
+          const y = tubeBot - ((v - lo) / (hi - lo)) * (tubeBot - tubeTop);
+          return (
+            <g key={v}>
+              <line x1={38} y1={y} x2={43} y2={y} stroke="#B3D6E8" strokeWidth="1.5" />
+              <text x={45} y={y + 3} fontSize="9" fill="#095A86">{v}</text>
+            </g>
+          );
+        })}
+        <circle cx={28} cy={138} r={14} fill={t == null ? "#cbd5e1" : "#0B6FA4"} />
+        <rect x={24} y={110} width={8} height={30} fill={t == null ? "#cbd5e1" : "#0B6FA4"} />
       </svg>
       <div className="min-w-0">
-        <figcaption className="text-xs font-medium text-slate-500">水溫</figcaption>
-        <p className="text-2xl font-extrabold tabular-nums text-slate-900">
+        <figcaption className="text-sm font-bold tracking-wide text-ocean-700">水溫</figcaption>
+        <p className="text-2xl font-bold tabular-nums text-slate-800">
           {t == null ? "—" : `${t.toFixed(1)}°C`}
         </p>
-        <p className="mt-1 text-sm font-semibold text-sky-700">建議 {suit}</p>
-        <p className="text-xs text-slate-400">{note}</p>
+        <p className="mt-1 text-sm font-semibold text-ocean-700">建議 {suit}</p>
+        <p className="text-xs text-slate-600">{note}</p>
       </div>
     </figure>
   );

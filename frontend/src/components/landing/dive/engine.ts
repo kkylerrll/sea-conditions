@@ -32,7 +32,19 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { diveState } from "../diveState";
-import { depthAt, environmentDarkness, progressAt, MAX_DEPTH_M } from "../depth";
+import {
+  cameraDepthAt,
+  depthAt,
+  environmentDarkness,
+  progressAt,
+  remapLegacyProgress,
+  MIN_CREATURE_DEPTH_M,
+  SURFACE_END,
+  MAX_DEPTH_M,
+} from "../depth";
+import { cameraPitchAt, DIVER_INTRO_END, DIVER_INTRO_START } from "./cameraPath";
+import { BUOY_TILT, WORLD_UNITS_PER_METER } from "./ocean/config";
+import { canBuildOcean, OceanWorld } from "./ocean/oceanWorld";
 import {
   MODEL_REGISTRY,
   ALL_MODELS,
@@ -44,15 +56,12 @@ import {
   type ModelName,
 } from "./models";
 import { buildPlaceholder, addDiverRimShader } from "./placeholders";
+import { applyProceduralSwim, advanceProceduralSwim, type SwimRuntime } from "./swim";
 
 // 世界座標與「公尺深度」的比例：1 個深度公尺＝這麼多三.js 單位。拉開一點
 // （而不是 1:1）是因為 1000m 全部塞進 1:1 的世界座標，遠裁面／濃霧密度會
 // 很難調；縮小比例讓整條下潛路徑仍然是連續的一條線，只是單位比較好算。
-const WORLD_UNITS_PER_METER = 0.35;
-
-function depthToWorldY(depthM: number) {
-  return -depthM * WORLD_UNITS_PER_METER;
-}
+// （世界單位／公尺的換算在 ocean/config.ts——海面 shader 內部用公尺，要跟這裡同一個值。）
 
 // round 9（淺水配色）：使用者要 0~10m 讀起來是「陽光藍」（像墾丁／綠島），
 // 不是原本那種灰撲撲的青綠（0x1c6e7a）。這張色票是深度（公尺）→上／下
@@ -108,8 +117,13 @@ const DIVER_RIM_MAX_STRENGTH = 1.3;
 // （珊瑚礁魚跟鯖魚重疊、鯖魚跟海龜/鎚頭鯊重疊、深海兩種互相重疊也跟
 // 海龜/鎚頭鯊的尾端重疊）,銜接處才會有兩種生物同時在畫面上,不是一種
 // 消失、下一種才出現的硬切。
-const REEF_RANGE: [number, number] = [0.02, 0.35];
-const SCHOOL_RANGE: [number, number] = [0.25, 0.55];
+//
+// round 13：前 SURFACE_END 的捲動是水面段（鏡頭漂在海面、然後沉進水裡），舊的進度區間
+// 用 remapLegacyProgress() 線性搬進下潛段（見 depth.ts），而且下緣夾在鏡頭沉入水中
+// （MIN_CREATURE_DEPTH_M）之後——水面上不會有任何生物。progressAt(深度) 寫的區間
+// 本來就以公尺為準，不用搬。
+const REEF_RANGE: [number, number] = [remapLegacyProgress(0.02), remapLegacyProgress(0.35)];
+const SCHOOL_RANGE: [number, number] = [remapLegacyProgress(0.25), remapLegacyProgress(0.55)];
 // 原本上緣停在 0.7（約 43m），水母要等到 progressAt(90)（約 0.78）才上場——
 // 中間 43~90m 這段捲動區間沒有任何生物的 band 覆蓋到,畫面會整個空掉。
 // 上緣延到 progressAt(120)，跟水母新的下緣（progressAt(90)）重疊一段，
@@ -120,7 +134,7 @@ const SCHOOL_RANGE: [number, number] = [0.25, 0.55];
 const DROP_RANGE: [number, number] = [progressAt(20), progressAt(120)];
 // round 11 回饋：海龜在 35m+ 出現不寫實——真的海龜活動在陽光照得到的淺水
 // （大約 3~25m），改成自己獨立的淺水區間，跟 REEF_RANGE 的珊瑚礁魚同場。
-const TURTLE_RANGE: [number, number] = [progressAt(3), progressAt(25)];
+const TURTLE_RANGE: [number, number] = [progressAt(Math.max(3, MIN_CREATURE_DEPTH_M)), progressAt(25)];
 // round 7 回饋：鮟鱇魚原本的區間（0.62~1.0）對應到深度只有 92m 就出現,
 // 跟文字搶畫面——牠該是「真正深淵」的主角，不是中層就出現的過場。用
 // progressAt()（見 depth.ts）反推「深度 ≥ 300m／90m」對應的捲動進度，
@@ -142,6 +156,18 @@ const JELLY_RANGE: [number, number] = [progressAt(90), 1.0];
 // ——那個 laneZ 只用來算 recycleGroupY 的 viewHalf 跟景深（視覺上的遠近
 // 分散），跟這裡的水平位置是兩件事。
 const MACKEREL_Z = -4.5;
+
+// round 13：生物能到的最淺 Y（世界單位，海平面在 y=0）。約 3.4 m 深——再淺的話
+// 從水下往上看會看到魚貼在水面上，從水上看也可能被浪頭露出來。
+const CREATURE_CEILING_Y = -1.2;
+
+// round 13：引擎讀的捲動進度是原始進度經臨界阻尼彈簧平滑後的值（秒，越大越慢）。
+// 快速甩捲軸時畫面滑過去而不是跳；章節文字不受影響（CSS 吃原始進度）。
+const SCROLL_SMOOTH_TIME = 0.25;
+// 潛水員入場時最高只到這裡（略低於水面），入場動畫從水面下側邊游進來。
+const DIVER_CEILING_Y = -0.55;
+// 氣泡浮到這個高度（世界單位）就破掉。
+const BUBBLE_CEILING_Y = -0.12;
 
 const UP = new THREE.Vector3(0, 1, 0);
 // round 11（真實游動姿態）：疊在固定朝向（quatTarget）之上的小幅度抬頭/
@@ -445,6 +471,10 @@ type Creature = {
   zFreq: number;
   prevYaw: number;
   scaleBase: number;
+  // round 17：靜態模型的程序化游動（見 swim.ts／models.ts proceduralSwim）；
+  // swimMul 是這一幀的速度倍率，由各移動分支寫入、updateCreatures 尾端消費。
+  swim: SwimRuntime | null;
+  swimMul: number;
   // laneCenterX：車道中心點的水平偏移（預設 0＝置中）——round 7 回饋：
   // 鮟鱇魚放大後桌機版會疊在左側固定文字欄上面,讓牠的車道整個偏到畫面
   // 右側（見 spawnCreatures 怎麼算這個值),不是靠「隨機剛好沒疊到」。
@@ -569,6 +599,18 @@ export class DiveEngine {
   // 「他在往下滑」的效果，所以這裡直接拿掉落後，只留數值平滑。
   private cameraY = 0;
   private cameraX = 0;
+  // round 13：捲動進度平滑（臨界阻尼彈簧），見 smoothProgress()。
+  private sp = 0;
+  private spVel = 0;
+  private spInit = false;
+  // round 13：海面（FFT 或 Gerstner）＋天空穹頂；null＝沒有（建不起來或 debug 模式）。
+  private ocean: OceanWorld | null = null;
+  private oceanFailed = false;
+  // 鏡頭姿態與潛水員位置的暫存（避免每幀 new）。
+  private qPitch = new THREE.Quaternion();
+  private qTilt = new THREE.Quaternion();
+  private tiltVec = new THREE.Vector3();
+  private diverPos = new THREE.Vector3();
   // round 10：記住上一幀的「真實深度」世界 Y（update() 裡的 trueDiverY)，
   // 用來算鏡頭目前的垂直移動速度（世界單位/秒）——recyclePosY／
   // recycleGroupY 要知道「鏡頭是不是快到足以自己把生物帶進畫面」,不能只
@@ -619,7 +661,8 @@ export class DiveEngine {
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.Fog(0x1c6e7a, 4, 40);
 
-    this.camera = new THREE.PerspectiveCamera(55, 1, 0.1, 260);
+    // near 0.05／far 2600：海面格網延伸到 5 公里外（1750 世界單位），遠裁面要夠遠。
+    this.camera = new THREE.PerspectiveCamera(55, 1, 0.05, 2600);
     this.camera.position.set(0, 0, 6);
 
     // 平光：AmbientLight 給全場一致的底，HemisphereLight 加一點天／海底
@@ -685,6 +728,7 @@ export class DiveEngine {
 
     this.debugKind = opts?.debugKind ?? null;
     const debugKind = this.debugKind;
+    if (!debugKind) this.initOcean();
     if (debugKind === "all") {
       this.setupDebugAllScene();
       return;
@@ -836,6 +880,8 @@ export class DiveEngine {
       burstOmega: (Math.PI * 2) / (SWIM_BURST_PERIOD_MIN + Math.random() * SWIM_BURST_PERIOD_RANGE),
       zFreq: 0.25 + Math.random() * 0.25,
       prevYaw: 0,
+      swim: null,
+      swimMul: 1,
       scaleBase: SCHOOL_TIMESCALE_BASE_MIN + Math.random() * SCHOOL_TIMESCALE_BASE_RANGE,
       laneWidth: 20,
       laneCenterX: 0,
@@ -1035,6 +1081,10 @@ export class DiveEngine {
           instance.position.sub(offset);
         }
       }
+      // 靜態模型：每個實例各自複製材質並注入彎曲 shader（個體相位偏移用 c.phase）。
+      if (entry.proceduralSwim && target !== this.diver) {
+        target.swim = applyProceduralSwim(instance, entry.proceduralSwim, target.phase);
+      }
       old.clear();
       old.add(instance);
       target.mixer = mixer && target === this.diver ? mixer : mixer ? new THREE.AnimationMixer(instance) : null;
@@ -1057,31 +1107,55 @@ export class DiveEngine {
   }
 
   /**
-   * 鮟鱇魚真的模型檔只有一個 mesh／一個材質（整條魚是單一 skinned mesh），
-   * 「誘餌」只是骨架裡的一串骨頭（Esca1_01…Esca7_07，esca 是鮟鱇魚誘餌在
-   * 生物學上的正式稱呼），不是獨立的子網格——材質層級沒辦法把誘餌跟身體
-   * 分開處理。解法：把一顆小的 emissive-only 球體掛在誘餌最末端的骨頭節點
-   * 上（Esca7_07）當子物件——Bone 本身是 Object3D 的子類，子物件會跟著骨架
-   * 動畫的 matrixWorld 更新自動移動，不需要自己算誘餌在動畫裡的位置。跟
-   * placeholders.ts 的 buildAnglerfishPlaceholder() 是同一個設計語言（固定
-   * 很亮、emissive-only 的小球），只是這裡掛的是真骨架而不是手擺的位置。
+   * 鮟鱇魚（round 19：Poshel 的寫實模型，單一 mesh＋morph 動畫，沒有骨架）：誘餌是
+   * mesh 幾何的一部分，沒有獨立節點可以掛光。做法：在 instance 本地座標找 y 最高的
+   * 頂點（誘餌竿的頂端球泡），把一顆小的 emissive-only 球體掛在該 mesh 的那個頂點位置
+   * ——跟 placeholders.ts 的 buildAnglerfishPlaceholder() 同一個設計語言（固定很亮、
+   * 自體發光的小球，不掛額外光源）。舊模型（Abby_Holzworth1）有 Esca7_07 骨頭時仍走舊路徑。
    */
   private attachAnglerfishLure(instance: THREE.Object3D) {
-    const tip = instance.getObjectByName("Esca7_07");
-    if (!tip) return;
+    instance.updateMatrixWorld(true);
     const lure = new THREE.Mesh(
       new THREE.SphereGeometry(1, 8, 8),
       new THREE.MeshStandardMaterial({ color: 0xbfffe0, emissive: 0x6dffb8, emissiveIntensity: 2.2, roughness: 0.4 }),
     );
-    // 骨頭節點本身已經被模型原始的內部縮放跟 entry.scale 層層縮小，球體的
-    // 半徑要除掉這個累積縮放，世界空間看起來才會是固定大小，不會因為骨架
-    // 縮放跟著變成一個看不見的小點。
-    instance.updateMatrixWorld(true);
-    const worldScale = new THREE.Vector3();
-    tip.getWorldScale(worldScale);
     const desiredWorldRadius = 0.07;
+    const bone = instance.getObjectByName("Esca7_07");
+    let host: THREE.Object3D | null = bone ?? null;
+    if (bone) {
+      host = bone;
+    } else {
+      // 找 instance 本地 y 最高的頂點
+      const toInstance = new THREE.Matrix4().copy(instance.matrixWorld).invert();
+      const v = new THREE.Vector3();
+      let bestY = -Infinity;
+      let bestLocal: THREE.Vector3 | null = null;
+      let bestMesh: THREE.Mesh | null = null;
+      instance.traverse((o) => {
+        if (!(o instanceof THREE.Mesh)) return;
+        const pos = o.geometry.getAttribute("position");
+        if (!pos) return;
+        const m = new THREE.Matrix4().multiplyMatrices(toInstance, o.matrixWorld);
+        for (let i = 0; i < pos.count; i++) {
+          v.fromBufferAttribute(pos, i).applyMatrix4(m);
+          if (v.y > bestY) {
+            bestY = v.y;
+            bestLocal = new THREE.Vector3().fromBufferAttribute(pos, i);
+            bestMesh = o;
+          }
+        }
+      });
+      if (!bestMesh || !bestLocal) return;
+      host = bestMesh;
+      lure.position.copy(bestLocal);
+    }
+    if (!host) return;
+    // host 節點本身已被模型內部縮放跟 entry.scale 層層縮小，球體半徑要除掉累積縮放，
+    // 世界空間看起來才是固定大小。
+    const worldScale = new THREE.Vector3();
+    host.getWorldScale(worldScale);
     lure.scale.setScalar(desiredWorldRadius / Math.max(worldScale.x, 1e-6));
-    tip.add(lure);
+    host.add(lure);
   }
 
   /** round 11：keepOnlyFirstReefFish 篩完之後,算這條魚留下來的頂點的 bbox
@@ -1161,7 +1235,8 @@ export class DiveEngine {
     // reefClown 的註解),數量分給剩下三種。使用者要求 0~20m 要「數量夠多」
     // （桌機 18~24 條、混合種類）——桌機三種各 7 條＝21 條,手機三種各 4
     // 條＝12 條。
-    const REEF_KINDS: ModelName[] = ["reefTang", "reefMoorish", "reefYellow"];
+    // round 17：reefYellow 換成寫實的 barramundi（CC0 靜態模型＋程序化擺尾）。
+    const REEF_KINDS: ModelName[] = ["clownfish", "butterflyfish", "barramundi"];
     const reefCountPerKind = this.mobile ? 4 : 7;
     for (const kind of REEF_KINDS) {
       const reef = this.spawnInRange(kind, "straight", REEF_RANGE, reefCountPerKind, [-10, -4]);
@@ -1175,11 +1250,11 @@ export class DiveEngine {
     // 同一個群體 Y 座標（見 update() 裡的 recycleGroupY），個體只在隊形裡
     // 有一個固定的小偏移。回饋：魚群要「明顯變大」，桌機 25~40 條、手機
     // 減半，車道拉近到 -1~-8。
-    const mackerelCount = this.mobile ? 16 : 32;
-    const mackerel = this.spawnInRange("mackerel", "school", SCHOOL_RANGE, mackerelCount, [-8, -1]);
+    const mackerelCount = this.mobile ? 12 : 24; // round 19：鯖魚換成黃鰭鮪（體型較大、面數較高），群數減少
+    const mackerel = this.spawnInRange("tuna", "school", SCHOOL_RANGE, mackerelCount, [-8, -1]);
     const mackerelDir: 1 | -1 = Math.random() < 0.5 ? 1 : -1;
     const mackerelSpeed = 0.5 + Math.random() * 0.2;
-    this.groupX.set("mackerel", { x: 0, dir: mackerelDir, speed: mackerelSpeed, initialized: false });
+    this.groupX.set("tuna", { x: 0, dir: mackerelDir, speed: mackerelSpeed, initialized: false });
     for (const c of mackerel) {
       // spawnInRange 裡已經對每個實例各自算過一次朝向（用它暫時隨機分配
       // 的 dir）——鯖魚是群體,全部要共用同一個 mackerelDir,這裡覆寫 dir
@@ -1437,18 +1512,60 @@ export class DiveEngine {
   }
 
   /**
-   * 算潛水員在畫面上該出現的世界座標，讓他「看起來」落在螢幕高度的某個比例
-   * （0＝頂端，1＝底部）。作法：已知攝影機的垂直視角與潛水員到攝影機的固定
-   * 距離，直接反推「要讓一個東西出現在畫面某個高度，它的世界 Y 要偏移攝影機
-   * 幾個單位」，而不是去動攝影機的俯仰角——固定攝影機朝向、只挪動潛水員的
-   * 世界位置，數學是精確的，不會因為攝影機大幅落後潛水員的真實深度而算出
-   * 離譜的角度。
+   * 把「螢幕上的位置」（fx：0＝左緣、1＝右緣；fy：0＝頂端、1＝底部）換成離鏡頭 dist 處的
+   * 世界座標。用鏡頭座標系反推（視野寬高 × 比例，再套鏡頭矩陣），所以不管鏡頭的俯仰角
+   * 怎麼變，潛水員都釘在螢幕同一點——潛水員的畫面位置只取決於捲動進度，跟鏡頭動態無關。
    */
-  private diverWorldYForFraction(frac: number, distanceFromCamera: number): number {
-    const visibleHeightAtDistance = this.visibleHeightAt(distanceFromCamera);
-    // frac 0.5＝畫面正中央＝跟攝影機同高；frac 越小（越靠頂端）潛水員的世界
-    // Y 要越高於攝影機，所以是減去 (frac-0.5)。
-    return this.cameraY - (frac - 0.5) * visibleHeightAtDistance;
+  private placeAtScreen(fx: number, fy: number, dist: number, out: THREE.Vector3): THREE.Vector3 {
+    const h = this.visibleHeightAt(dist);
+    const w = h * this.camera.aspect;
+    return out.set((fx - 0.5) * w, (0.5 - fy) * h, -dist).applyMatrix4(this.camera.matrixWorld);
+  }
+
+  /** 臨界阻尼彈簧（Unity SmoothDamp 的穩定形式，任何 dt 都不會發散）追著原始捲動進度。
+      SCROLL_SMOOTH_TIME 越大越「慢慢滑」。第一次呼叫直接對齊，不從 0 掃過去。 */
+  private smoothProgress(target: number, dt: number): number {
+    if (!this.spInit) {
+      this.sp = target;
+      this.spVel = 0;
+      this.spInit = true;
+      return this.sp;
+    }
+    const omega = 2 / SCROLL_SMOOTH_TIME;
+    const x = omega * dt;
+    const e = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+    const change = this.sp - target;
+    const temp = (this.spVel + omega * change) * dt;
+    this.spVel = (this.spVel - omega * temp) * e;
+    this.sp = THREE.MathUtils.clamp(target + (change + temp) * e, 0, 1);
+    return this.sp;
+  }
+
+  /** 建立海面（FFT／Gerstner）與天空穹頂。失敗只 warn，引擎照舊跑（退回水下版）。 */
+  private initOcean() {
+    if (!canBuildOcean(this.renderer)) return;
+    const q = new URLSearchParams(window.location.search).get("ocean");
+    const force = q === "gerstner" || q === "fft" || q === "fft128" ? q : undefined;
+    // 海面的 shader 如果在某台機器上編譯失敗，three 預設只會 console.error 然後那個
+    // mesh 就不畫了；這裡接住並標記，update() 會把整個海面關掉、退回水下版。
+    this.renderer.debug.onShaderError = (gl, program, vs, fs) => {
+      console.error(
+        "[ocean] shader error:",
+        gl.getProgramInfoLog(program),
+        gl.getShaderInfoLog(vs),
+        gl.getShaderInfoLog(fs),
+      );
+      this.oceanFailed = true;
+    };
+    try {
+      this.ocean = new OceanWorld(this.renderer, { mobile: this.mobile, force });
+      this.scene.add(this.ocean.group);
+      this.scene.background = null; // 背景改由天空穹頂畫
+      console.info("[ocean]", this.ocean.describe());
+    } catch (err) {
+      console.warn("[ocean] 建立失敗，退回水下版:", err);
+      this.ocean = null;
+    }
   }
 
   /** 給定距離攝影機的深度，回傳當下視野在該深度的可視寬度（世界單位）——
@@ -1533,39 +1650,76 @@ export class DiveEngine {
     }
     const now = performance.now();
     const t = (now - this.clockStart) / 1000;
-    const progress = diveState.progress;
+
+    // 海面 shader 編譯失敗（極少見）：關掉整個海面，退回舊版「一開始就在水下」。
+    if (this.ocean && this.oceanFailed && this.ocean.group.visible) {
+      this.ocean.setVisible(false);
+      this.scene.background = this.bgTexture;
+    }
+    const oceanOn = !!this.ocean && !this.oceanFailed;
+
+    // ---- 捲動進度平滑（round 13）：引擎讀的是臨界阻尼彈簧追著原始進度的值，
+    // 快速甩動捲軸時畫面也是滑過去，不會跳。章節文字（CSS）仍吃原始進度。 ----
+    const progress = this.smoothProgress(diveState.progress, dt);
     const velocity = diveState.velocity;
-    const depthM = depthAt(progress);
+    // 鏡頭在平均海平面下幾公尺，水上為負（見 depth.ts）；沒有海面可看時至少在水下 2 公尺。
+    const camDepthM = oceanOn ? cameraDepthAt(progress) : Math.max(cameraDepthAt(progress), 2);
+    const depthM = Math.max(0, camDepthM);
     // 環境的暗化程度跟捲動進度走，不是跟公尺數走——見 depth.ts 的 environmentDarkness()
     // 註解：MAX_DEPTH_M 是 1000，公尺數直接換算的話 0～40m 幾乎不會變暗。
     const depthFrac = environmentDarkness(progress);
 
-    // ---- 攝影機：直接等於真實深度，只做極短的數值平滑（見欄位宣告處說明） ----
-    const trueDiverY = depthToWorldY(depthM);
-    const CAMERA_SMOOTH_TAU = 0.12;
-    const camLerpAlpha = 1 - Math.exp(-dt / CAMERA_SMOOTH_TAU);
-    this.cameraY += (trueDiverY - this.cameraY) * camLerpAlpha;
+    // ---- 攝影機：浮標 + 下沉 ----
+    // 水面上時鏡頭是一個阻尼彈簧，騎在低通過濾後的海面上（ocean/oceanWorld.ts）；
+    // 沉得越深，跟浪的程度（ride）越小，最後完全不受海面影響。
     this.cameraX = Math.sin(t * 0.05) * 0.15;
+    const ride = oceanOn ? 1 - smoothstep((camDepthM - 0.5) / 5.5) : 0;
+    let heaveM = 0;
+    if (oceanOn) {
+      this.ocean!.stepBuoy(dt, t, this.cameraX / WORLD_UNITS_PER_METER, 6 / WORLD_UNITS_PER_METER);
+      heaveM = this.ocean!.heaveM * ride;
+    }
+    const cameraYm = heaveM - camDepthM;
+    const trueDiverY = cameraYm * WORLD_UNITS_PER_METER;
+    // 進度本身已經平滑過了，鏡頭直接跟，不再疊第二層延遲（水線判斷要用真實的鏡頭高度）。
+    this.cameraY = trueDiverY;
 
     this.camera.position.set(this.cameraX, this.cameraY, 6);
-    // 攝影機朝向固定（水平略帶一點點下傾），不隨深度或潛水員位置擺動——
-    // 潛水員在畫面上的高度完全由下面的 diverWorldYForFraction() 決定，兩件
-    // 事分開算，攝影機的姿態只負責「看起來平穩」。
-    this.camera.lookAt(this.cameraX, this.cameraY - 0.15, -6);
+    // 俯仰角由捲動進度決定（浮標段略低頭 → 下沉時低頭看水 → 沒入水後抬頭回望水面 →
+    // 轉回水平，見 cameraPath.ts）；浮標的傾斜（跟著海面法線）疊在外層。
+    this.qPitch.setFromAxisAngle(X_AXIS, cameraPitchAt(progress));
+    if (oceanOn && ride > 0) {
+      this.tiltVec.set(0, 1, 0).lerp(this.ocean!.buoyNormal, BUOY_TILT * ride).normalize();
+      this.qTilt.setFromUnitVectors(UP, this.tiltVec);
+      this.camera.quaternion.copy(this.qTilt).multiply(this.qPitch);
+    } else {
+      this.camera.quaternion.copy(this.qPitch);
+    }
+    this.camera.updateMatrixWorld(true);
 
-    // ---- 潛水員的螢幕位置：progress 0 時貼近頂端（但整個人都在畫面內），
+    // ---- 潛水員的螢幕位置：下潛段開始時貼近頂端（但整個人都在畫面內），
     // progress 1 時貼近底部 ----
     const SCREEN_FRAC_TOP = 0.3;
     const SCREEN_FRAC_BOTTOM = 0.78;
     const DIVER_DISTANCE = 5;
-    const frac = lerp(SCREEN_FRAC_TOP, SCREEN_FRAC_BOTTOM, smoothstep(progress));
-    const diverY = this.diverWorldYForFraction(frac, DIVER_DISTANCE);
+    const diveQ = THREE.MathUtils.clamp((progress - SURFACE_END) / (1 - SURFACE_END), 0, 1);
+    const frac = lerp(SCREEN_FRAC_TOP, SCREEN_FRAC_BOTTOM, smoothstep(diveQ));
 
     // ---- 潛水員的水平位置：>=1024px（跟 globals.css 的文字左欄斷點對齊）
     // 偏到畫面右側，窄螢幕置中（那時候文字也退回置中，見 globals.css）。
     const SCREEN_FRAC_X = this.narrowLayout ? 0.5 : 0.71;
-    const visibleWidthAtDiver = this.visibleWidthAt(DIVER_DISTANCE);
-    const diverX = this.cameraX + (SCREEN_FRAC_X - 0.5) * visibleWidthAtDiver;
+
+    // ---- 潛水員入場（round 13）：水面段沒有潛水員。鏡頭沉入水中、抬頭回望水面之後，
+    // 他從右側外上方游進畫面，落到原本的螢幕位置（之後照舊跟 SCREEN_FRAC_* 走）。
+    // 位置用「螢幕比例 → 鏡頭座標系」反推，鏡頭俯仰角還在變的時候他也釘在螢幕同一點。
+    const intro = smoothstep((progress - DIVER_INTRO_START) / (DIVER_INTRO_END - DIVER_INTRO_START));
+    const diverFx = lerp(SCREEN_FRAC_X + (this.narrowLayout ? 0.95 : 0.55), SCREEN_FRAC_X, intro);
+    const diverFy = lerp(frac - 0.3, frac, intro);
+    this.placeAtScreen(diverFx, diverFy, DIVER_DISTANCE, this.diverPos);
+    if (this.diverPos.y > DIVER_CEILING_Y) this.diverPos.y = DIVER_CEILING_Y; // 不出水面
+    const diverX = this.diverPos.x;
+    const diverY = this.diverPos.y;
+    const diverZ = this.diverPos.z;
 
     // ---- 潛水員的朝向：跟著捲動方向平滑翻轉,不是瞬間打頭 ----
     const facingTarget = diveState.direction < 0 ? 1 : 0;
@@ -1573,28 +1727,32 @@ export class DiveEngine {
     this.facing += (facingTarget - this.facing) * (1 - Math.exp(-dt / FACING_TAU));
 
     if (this.diver) {
-      this.diver.root.position.set(diverX, diverY, 6 - DIVER_DISTANCE);
-      // 俯衝角（下潛）跟仰角（上浮）之間用 this.facing 內插，中間值就是接近
-      // 水平的過渡姿態——「轉身」本身也要是連續的動作，不是兩個姿態互相切換。
-      const pitch = lerp(-0.55, 0.5, this.facing);
-      this.diver.root.rotation.set(
-        pitch + Math.sin(t * 0.4) * 0.03,
-        Math.PI + Math.sin(t * 0.15) * 0.05,
-        Math.sin(t * 0.3) * 0.04,
-      );
-      const swimSpeed = 1 + velocity * 3.5; // 捲動越快，游得越用力
-      if (this.diver.mixer) this.diver.mixer.update(dt * swimSpeed);
-      else this.animatePlaceholderLimbs(this.diver, t, swimSpeed);
+      const diverVisible = intro > 0.002;
+      this.diver.root.visible = diverVisible;
+      if (diverVisible) {
+        this.diver.root.position.set(diverX, diverY, diverZ);
+        // 俯衝角（下潛）跟仰角（上浮）之間用 this.facing 內插，中間值就是接近
+        // 水平的過渡姿態——「轉身」本身也要是連續的動作，不是兩個姿態互相切換。
+        const pitch = lerp(-0.55, 0.5, this.facing);
+        this.diver.root.rotation.set(
+          pitch + Math.sin(t * 0.4) * 0.03,
+          Math.PI + Math.sin(t * 0.15) * 0.05,
+          Math.sin(t * 0.3) * 0.04,
+        );
+        const swimSpeed = 1 + velocity * 3.5; // 捲動越快，游得越用力
+        if (this.diver.mixer) this.diver.mixer.update(dt * swimSpeed);
+        else this.animatePlaceholderLimbs(this.diver, t, swimSpeed);
 
-      // 潛水員規律吐氣：每隔一段時間在頭部位置噴一小串氣泡。時間間隔本身
-      // 也隨機（1.4~2.6 秒），不然固定週期看久了會很假。
-      this.nextBurstAt -= dt;
-      if (this.nextBurstAt <= 0) {
-        this.nextBurstAt = 1.4 + Math.random() * 1.2;
-        // 吐氣氣泡用 getDiverHeadWorld()：真模型讀頭部骨頭，placeholder 則
-        // 沿潛水員自己的頭頂方向偏移，兩者位置一致。
-        const head = this.getDiverHeadWorld(this.headTmp);
-        this.spawnBubbleBurst(head.x, head.y, head.z + 0.1);
+        // 潛水員規律吐氣：每隔一段時間在頭部位置噴一小串氣泡。時間間隔本身
+        // 也隨機（1.4~2.6 秒），不然固定週期看久了會很假。
+        this.nextBurstAt -= dt;
+        if (this.nextBurstAt <= 0) {
+          this.nextBurstAt = 1.4 + Math.random() * 1.2;
+          // 吐氣氣泡用 getDiverHeadWorld()：真模型讀頭部骨頭，placeholder 則
+          // 沿潛水員自己的頭頂方向偏移，兩者位置一致。
+          const head = this.getDiverHeadWorld(this.headTmp);
+          this.spawnBubbleBurst(head.x, head.y, head.z + 0.1);
+        }
       }
     }
 
@@ -1613,7 +1771,9 @@ export class DiveEngine {
     // depthFrac 插值」換成「DEPTH_GRADIENT_STOPS 這份陽光藍色票,用真實
     // 深度公尺數內插」,理由見 sampleDepthGradient() 的說明。 ----
     const { top: gradTop, bottom: gradBottom } = sampleDepthGradient(depthM);
-    this.paintBackgroundGradient(gradTop, gradBottom);
+    // 有海面時背景由海面模組的天空穹頂畫（水線以下是同一組漸層色，見 ocean/shaders.ts 的
+    // waterBg）；沒有海面（建不起來／debug 模式）才用這張 2D 畫布當 scene.background。
+    if (!oceanOn) this.paintBackgroundGradient(gradTop, gradBottom);
     // 霧色＝漸層的「中間色」（上下兩色各半）——跟使用者的要求對齊，也讓
     // 遠方被霧吞掉的生物跟背景融合得自然,不會看起來像兩種不同的顏色系統。
     // gradTop/gradBottom 跟這裡的 gradMid 是同一次 sampleDepthGradient()
@@ -1652,7 +1812,20 @@ export class DiveEngine {
     this.sunLight.intensity = Math.max(0, 1 - depthM / 40);
     this.sunLight.position.set(this.cameraX, this.cameraY + 20, 10);
     this.sunLight.target.position.set(this.cameraX, this.cameraY - 4, 0);
-    this.updateFlashlight(t, dt, depthFrac, diverX, diverY, 6 - DIVER_DISTANCE);
+    this.updateFlashlight(t, dt, depthFrac, diverX, diverY, diverZ);
+
+    // ---- 海面：推進 FFT、更新水線與天空 uniforms（要在鏡頭矩陣算好之後） ----
+    if (oceanOn) {
+      this.ocean!.update({
+        dt,
+        time: t,
+        camera: this.camera,
+        cameraYm,
+        darkness: depthFrac,
+        waterTop: gradTop,
+        waterBottom: gradBottom,
+      });
+    }
 
     // ---- 潛水員材質：fresnel 輪廓光的強度隨深度增強（回饋：progress≈1／
     // 深度 1000m 時潛水員幾乎融進近黑背景；round 6 用「整片材質固定 emissive」
@@ -1695,6 +1868,14 @@ export class DiveEngine {
     const maxStep = speed * dt;
     if (dist <= maxStep) return { value: target, done: true };
     return { value: current + Math.sign(delta) * maxStep, done: false };
+  }
+
+  /** 在鏡頭視野附近（refY ± viewHalf×frac）隨機挑一個 Y，但不超過 CREATURE_CEILING_Y——
+      round 13：海面現在真的存在，生物不能浮到水面之上。 */
+  private spawnY(refY: number, viewHalf: number, frac: number): number {
+    const lo = refY - viewHalf * frac;
+    const hi = Math.max(lo, Math.min(refY + viewHalf * frac, CREATURE_CEILING_Y));
+    return lo + Math.random() * (hi - lo);
   }
 
   /**
@@ -1752,14 +1933,14 @@ export class DiveEngine {
     if (!c.initialized) {
       // 第一次進入活躍區間：直接出現在視野內隨機一點，不用等牠「游進來」，
       // 不然剛進區間的前幾秒畫面會是空的。
-      c.posY = refY + (Math.random() * 2 - 1) * viewHalf * 0.7;
+      c.posY = this.spawnY(refY, viewHalf, 0.7);
       c.initialized = true;
       c.swimBackActive = false;
       return;
     }
     if (c.posY > refY + viewHalf + margin || c.posY < refY - viewHalf - margin) {
       if (cameraSpeed < DiveEngine.SWIM_BACK_SPEED_MIN) {
-        c.posY = refY + (Math.random() * 2 - 1) * viewHalf * 0.7;
+        c.posY = this.spawnY(refY, viewHalf, 0.7);
       } else {
         c.posY = c.posY > refY ? refY - viewHalf - margin * 0.5 : refY + viewHalf + margin * 0.5;
       }
@@ -1768,7 +1949,7 @@ export class DiveEngine {
     }
     if (c.posY > refY + viewHalf || c.posY < refY - viewHalf) {
       if (!c.swimBackActive) {
-        c.swimTargetY = refY + (Math.random() * 2 - 1) * viewHalf * 0.7;
+        c.swimTargetY = this.spawnY(refY, viewHalf, 0.7);
         c.swimBackSpeed = DiveEngine.SWIM_BACK_SPEED_MIN + Math.random() * DiveEngine.SWIM_BACK_SPEED_RANGE;
         c.swimBackActive = true;
       }
@@ -1810,7 +1991,7 @@ export class DiveEngine {
       return g.y;
     }
     if (!g.initialized) {
-      g.y = refY + (Math.random() * 2 - 1) * viewHalf * 0.5;
+      g.y = this.spawnY(refY, viewHalf, 0.5);
       g.initialized = true;
       g.swimBackActive = false;
       return g.y;
@@ -1820,7 +2001,7 @@ export class DiveEngine {
       // 「外緣→游回來」兩步,直接空降到視野內側（這裡用 0.5,跟
       // !initialized 那段用同一個比例，群體本來就用比個體窄一點的範圍）。
       if (cameraSpeed < DiveEngine.SWIM_BACK_SPEED_MIN) {
-        g.y = refY + (Math.random() * 2 - 1) * viewHalf * 0.5;
+        g.y = this.spawnY(refY, viewHalf, 0.5);
       } else {
         g.y = g.y > refY ? refY - viewHalf - margin * 0.5 : refY + viewHalf + margin * 0.5;
       }
@@ -1829,7 +2010,7 @@ export class DiveEngine {
     }
     if (g.y > refY + viewHalf || g.y < refY - viewHalf) {
       if (!g.swimBackActive) {
-        g.swimTargetY = refY + (Math.random() * 2 - 1) * viewHalf * 0.5;
+        g.swimTargetY = this.spawnY(refY, viewHalf, 0.5);
         g.swimBackSpeed = DiveEngine.SWIM_BACK_SPEED_MIN + Math.random() * DiveEngine.SWIM_BACK_SPEED_RANGE;
         g.swimBackActive = true;
       }
@@ -1867,6 +2048,7 @@ export class DiveEngine {
     const vx = Math.cos(t * speed) * speed * amp;
     const vel = new THREE.Vector3(vx, 0, 0);
     this.orientToVelocity(c, vel, dt, 0.15);
+    if (c.swim) advanceProceduralSwim(c.swim, dt, 1);
     if (c.mixer) c.mixer.update(dt);
     else this.animatePlaceholderLimbs(c, t, 1);
   }
@@ -1896,6 +2078,7 @@ export class DiveEngine {
       const x = ((raw + laneWidth) % laneWidth) - laneWidth / 2;
       c.root.position.set(x, c.posY, 0);
       this.orientToVelocity(c, vel, dt, 0.25);
+      if (c.swim) advanceProceduralSwim(c.swim, dt, 1);
       if (c.mixer) c.mixer.update(dt);
       else this.animatePlaceholderLimbs(c, t, 1);
     }
@@ -2011,6 +2194,7 @@ export class DiveEngine {
           c.root.quaternion.slerp(this.orientTarget, 1 - Math.exp(-dt / SWIM_ORIENT_TAU));
           // 尾鰭擺動速度跟著當下速度倍率走：衝刺時拍得快、滑行時慢。
           if (c.mixer) c.mixer.timeScale = THREE.MathUtils.clamp(speedMul, SWIM_TIMESCALE_MIN, SWIM_TIMESCALE_MAX);
+          c.swimMul = speedMul;
           break;
         }
         case "school": {
@@ -2037,6 +2221,7 @@ export class DiveEngine {
             const ts = c.scaleBase * (1 + SCHOOL_TIMESCALE_AMP * Math.sin(t * 0.9 + c.phase * 2.1));
             c.mixer.timeScale = THREE.MathUtils.clamp(ts, SWIM_TIMESCALE_MIN, SWIM_TIMESCALE_MAX);
           }
+          c.swimMul = c.scaleBase * (1 + SCHOOL_TIMESCALE_AMP * Math.sin(t * 0.9 + c.phase * 2.1));
           break;
         }
         case "drift":
@@ -2054,6 +2239,7 @@ export class DiveEngine {
           break;
         }
       }
+      if (c.root.position.y > CREATURE_CEILING_Y) c.root.position.y = CREATURE_CEILING_Y;
       if (!c.root.visible) continue;
 
       // 通用 rim floor（見 models.ts 的 CREATURE_RIM_FLOOR）：深度越深,
@@ -2076,6 +2262,7 @@ export class DiveEngine {
         }
       }
 
+      if (c.swim) advanceProceduralSwim(c.swim, dt, c.swimMul);
       if (c.mixer) c.mixer.update(dt);
       else this.animatePlaceholderLimbs(c, t, 1);
     }
@@ -2094,6 +2281,8 @@ export class DiveEngine {
         b.sprite.position.x = (Math.random() - 0.5) * 16;
         b.sprite.position.z = -(1 + Math.random() * 14);
       }
+      // 氣泡飄到水面就消失（水面之上不該有氣泡）。
+      b.sprite.visible = b.sprite.position.y < BUBBLE_CEILING_Y;
     }
 
     // 吐氣氣泡：有限壽命，飄出壽命就收回（隱藏＋標記可回收），並隨著壽命
@@ -2105,6 +2294,7 @@ export class DiveEngine {
       b.sprite.position.x += b.vx * dt + Math.sin(t * b.wobbleFreq + b.wobblePhase) * 0.08 * dt;
       const mat = b.sprite.material as THREE.SpriteMaterial;
       mat.opacity = Math.max(0, Math.min(0.85, b.life * 0.6));
+      if (b.sprite.position.y >= BUBBLE_CEILING_Y) b.life = Math.min(b.life, 0);
       if (b.life <= 0) {
         b.active = false;
         b.sprite.visible = false;
@@ -2136,6 +2326,8 @@ export class DiveEngine {
       }
     });
     this.bubbleTexture.dispose();
+    this.ocean?.dispose();
+    this.renderer.debug.onShaderError = null;
     this.renderer.dispose();
   }
 }
