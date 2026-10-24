@@ -521,3 +521,21 @@ npm run build
 - 寫實魚類來源調查：Smithsonian 3D（CC0）只有保存標本（鯊魚下顎、乾燥河豚／箱魨，貼圖偏暗褐，不適用）；Poly Haven、three.js examples 沒有魚。唯一可用的是 Khronos glTF-Sample-Assets 的 **BarramundiFish（CC0，亞洲鱸）**——PBR 魚鱗法線＋AO，3.9k 三角形，12.5MB → `optimize --texture-compress webp --texture-size 1024` 後約 310KB（`public/landing/models/barramundi.glb`）。
 - 新增 `dive/swim.ts`：靜態模型的程序化游動（`onBeforeCompile` 頂點彎曲，carangiform／subcarangiform／flap 三種風格，法線近似跟著彎；每實例複製材質＋各自相位，ω 由 `c.swimMul`（引擎當下速度倍率）累加相位）。`models.ts` 新欄位 `proceduralSwim`（axis 可省略，載入時自動量；headSign 必填）。有骨架的模型（目前的海龜是 SkinnedMesh）不套用，維持原有動畫＋roll 搖擺。
 - 場景：REEF_KINDS 的 `reefYellow` 換成 `barramundi`；其餘物種沒有更好的免登入來源，維持原模型。海龜／鯊魚／小丑魚等需要 Sketchfab 下載（要 token）才有寫實替代，候選清單見 /tmp/claude-501/fish/shortlist.md；下載後直接 `proceduralSwim` 填進 models.ts 即可。
+
+## 第十九輪：其餘生物全部換成寫實 Sketchfab 模型（使用者尚未肉眼確認）
+
+- 來源（全部 CC BY 4.0，下載前以 `GET /v3/models/<uid>` 重新核對授權；作者／網址見 `public/landing/CREDITS.md` 與 `dive/models.ts` 的 `credit`）：
+  小丑魚 zixisun02（static，proceduralSwim）、珠蝶魚 Dsanchez13（static，proceduralSwim，取代 reef-school 的藍倒吊／角蝴蝶魚）、
+  黃鰭鮪 GoldenZtuff（骨架＋Swim 動畫，取代鯖魚當魚群）、綠蠵龜 alvaniLa（static 掃描，原 56k 面→25k，`flap` 程序化拍鰭）、
+  鎚頭鯊 kenchoo（骨架動畫）、鮟鱇魚 Poshel（單一 mesh＋morph 動畫）、月亮水母 n-（骨架動畫）。
+- 移除：reef-school.glb（LasquetiSpice）、mackerel.glb（1shxxn）、舊海龜／舊鎚頭鯊／舊鮟鱇魚／舊水母（DigitalLife3D／sharkingaround／Abby_Holzworth1／n- Crystal）。
+  `ModelName` 的 reef* 與 mackerel 項目已刪（`ModelEntry.reefMeshIndex` 等欄位與 engine 裡 reef 專用函式留著，目前沒有模型使用）。
+- 壓縮：沿用上面指令（海龜先 `metalrough`＋`--simplify-ratio 0.45`；其餘 `optimize --simplify false`，小魚 webp 512、海龜／鎚頭鯊 1024）。
+  九個 glb 合計約 2.9 MB（diver 345K、barramundi 310K、clownfish 81K、butterflyfish 124K、tuna 360K、turtle 260K、hammerhead 434K、anglerfish 649K、jellyfish 446K）。
+- 水母原檔場景有一個 84 面的 `Cube_0` 道具（縮圖上飄的方塊）：用 `@gltf-transform/core` 刪節點後 `prune` 再 optimize，成品沒有方塊。
+- 鎚頭鯊的烘焙動畫根骨 `IK_Back_Bone_01` rotation 與綁定姿勢差 ~90°（會翻肚皮朝鏡頭）→ `stripRotationMatch: ["IK_Back_Bone_01_jnt_"]`；朝向 `travelYaw=π/2`（頭在 -x）。
+  珠蝶魚同為頭在 -x（`travelYaw=π/2`、`headSign=-1`）。海龜長軸要明確寫 `axis: "z"`（bbox 最長的是展開的前鰭 x，自動量會選錯）。
+- 鮟鱇魚新模型沒有 `Esca7_07` 骨頭：`attachAnglerfishLure()` 改成找實例本地 y 最高頂點（誘餌球泡）掛 emissive 小球。
+- 場景：REEF_KINDS＝clownfish／butterflyfish／barramundi；school 改 tuna（桌機 20／手機 10 隻）；海龜 TURTLE_RANGE、鎚頭鯊 DROP_RANGE、鮟鱇魚／水母深度不變。
+- 除錯：`?diveDebug=<clownfish|butterflyfish|barramundi|tuna|turtle|hammerhead|anglerfish|jellyfish>`；截圖在 /tmp/claude-501/shots/fish-final-*.png。
+- 未驗證：整頁捲動時的游動手感（只用 swiftshader 單物種截圖看過朝向／比例／彎曲）、手機效能（tuna 骨架 ×10、鮟鱇魚 morph）。

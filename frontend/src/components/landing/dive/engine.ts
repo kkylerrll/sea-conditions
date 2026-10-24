@@ -1107,31 +1107,55 @@ export class DiveEngine {
   }
 
   /**
-   * 鮟鱇魚真的模型檔只有一個 mesh／一個材質（整條魚是單一 skinned mesh），
-   * 「誘餌」只是骨架裡的一串骨頭（Esca1_01…Esca7_07，esca 是鮟鱇魚誘餌在
-   * 生物學上的正式稱呼），不是獨立的子網格——材質層級沒辦法把誘餌跟身體
-   * 分開處理。解法：把一顆小的 emissive-only 球體掛在誘餌最末端的骨頭節點
-   * 上（Esca7_07）當子物件——Bone 本身是 Object3D 的子類，子物件會跟著骨架
-   * 動畫的 matrixWorld 更新自動移動，不需要自己算誘餌在動畫裡的位置。跟
-   * placeholders.ts 的 buildAnglerfishPlaceholder() 是同一個設計語言（固定
-   * 很亮、emissive-only 的小球），只是這裡掛的是真骨架而不是手擺的位置。
+   * 鮟鱇魚（round 19：Poshel 的寫實模型，單一 mesh＋morph 動畫，沒有骨架）：誘餌是
+   * mesh 幾何的一部分，沒有獨立節點可以掛光。做法：在 instance 本地座標找 y 最高的
+   * 頂點（誘餌竿的頂端球泡），把一顆小的 emissive-only 球體掛在該 mesh 的那個頂點位置
+   * ——跟 placeholders.ts 的 buildAnglerfishPlaceholder() 同一個設計語言（固定很亮、
+   * 自體發光的小球，不掛額外光源）。舊模型（Abby_Holzworth1）有 Esca7_07 骨頭時仍走舊路徑。
    */
   private attachAnglerfishLure(instance: THREE.Object3D) {
-    const tip = instance.getObjectByName("Esca7_07");
-    if (!tip) return;
+    instance.updateMatrixWorld(true);
     const lure = new THREE.Mesh(
       new THREE.SphereGeometry(1, 8, 8),
       new THREE.MeshStandardMaterial({ color: 0xbfffe0, emissive: 0x6dffb8, emissiveIntensity: 2.2, roughness: 0.4 }),
     );
-    // 骨頭節點本身已經被模型原始的內部縮放跟 entry.scale 層層縮小，球體的
-    // 半徑要除掉這個累積縮放，世界空間看起來才會是固定大小，不會因為骨架
-    // 縮放跟著變成一個看不見的小點。
-    instance.updateMatrixWorld(true);
-    const worldScale = new THREE.Vector3();
-    tip.getWorldScale(worldScale);
     const desiredWorldRadius = 0.07;
+    const bone = instance.getObjectByName("Esca7_07");
+    let host: THREE.Object3D | null = bone ?? null;
+    if (bone) {
+      host = bone;
+    } else {
+      // 找 instance 本地 y 最高的頂點
+      const toInstance = new THREE.Matrix4().copy(instance.matrixWorld).invert();
+      const v = new THREE.Vector3();
+      let bestY = -Infinity;
+      let bestLocal: THREE.Vector3 | null = null;
+      let bestMesh: THREE.Mesh | null = null;
+      instance.traverse((o) => {
+        if (!(o instanceof THREE.Mesh)) return;
+        const pos = o.geometry.getAttribute("position");
+        if (!pos) return;
+        const m = new THREE.Matrix4().multiplyMatrices(toInstance, o.matrixWorld);
+        for (let i = 0; i < pos.count; i++) {
+          v.fromBufferAttribute(pos, i).applyMatrix4(m);
+          if (v.y > bestY) {
+            bestY = v.y;
+            bestLocal = new THREE.Vector3().fromBufferAttribute(pos, i);
+            bestMesh = o;
+          }
+        }
+      });
+      if (!bestMesh || !bestLocal) return;
+      host = bestMesh;
+      lure.position.copy(bestLocal);
+    }
+    if (!host) return;
+    // host 節點本身已被模型內部縮放跟 entry.scale 層層縮小，球體半徑要除掉累積縮放，
+    // 世界空間看起來才是固定大小。
+    const worldScale = new THREE.Vector3();
+    host.getWorldScale(worldScale);
     lure.scale.setScalar(desiredWorldRadius / Math.max(worldScale.x, 1e-6));
-    tip.add(lure);
+    host.add(lure);
   }
 
   /** round 11：keepOnlyFirstReefFish 篩完之後,算這條魚留下來的頂點的 bbox
@@ -1212,7 +1236,7 @@ export class DiveEngine {
     // （桌機 18~24 條、混合種類）——桌機三種各 7 條＝21 條,手機三種各 4
     // 條＝12 條。
     // round 17：reefYellow 換成寫實的 barramundi（CC0 靜態模型＋程序化擺尾）。
-    const REEF_KINDS: ModelName[] = ["reefTang", "reefMoorish", "barramundi"];
+    const REEF_KINDS: ModelName[] = ["clownfish", "butterflyfish", "barramundi"];
     const reefCountPerKind = this.mobile ? 4 : 7;
     for (const kind of REEF_KINDS) {
       const reef = this.spawnInRange(kind, "straight", REEF_RANGE, reefCountPerKind, [-10, -4]);
@@ -1226,11 +1250,11 @@ export class DiveEngine {
     // 同一個群體 Y 座標（見 update() 裡的 recycleGroupY），個體只在隊形裡
     // 有一個固定的小偏移。回饋：魚群要「明顯變大」，桌機 25~40 條、手機
     // 減半，車道拉近到 -1~-8。
-    const mackerelCount = this.mobile ? 16 : 32;
-    const mackerel = this.spawnInRange("mackerel", "school", SCHOOL_RANGE, mackerelCount, [-8, -1]);
+    const mackerelCount = this.mobile ? 12 : 24; // round 19：鯖魚換成黃鰭鮪（體型較大、面數較高），群數減少
+    const mackerel = this.spawnInRange("tuna", "school", SCHOOL_RANGE, mackerelCount, [-8, -1]);
     const mackerelDir: 1 | -1 = Math.random() < 0.5 ? 1 : -1;
     const mackerelSpeed = 0.5 + Math.random() * 0.2;
-    this.groupX.set("mackerel", { x: 0, dir: mackerelDir, speed: mackerelSpeed, initialized: false });
+    this.groupX.set("tuna", { x: 0, dir: mackerelDir, speed: mackerelSpeed, initialized: false });
     for (const c of mackerel) {
       // spawnInRange 裡已經對每個實例各自算過一次朝向（用它暫時隨機分配
       // 的 dir）——鯖魚是群體,全部要共用同一個 mackerelDir,這裡覆寫 dir

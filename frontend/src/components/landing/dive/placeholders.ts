@@ -163,7 +163,7 @@ function buildMackerelPlaceholder(): THREE.Group {
   const group = new THREE.Group();
   const color = 0x9fb8c9;
   const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.3, metalness: 0.4 });
-  tagRimFloor(bodyMat, "mackerel");
+  tagRimFloor(bodyMat, "tuna");
   const body = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.5, 8), bodyMat);
   body.rotation.x = Math.PI / 2;
   group.add(body);
@@ -315,12 +315,10 @@ function buildJellyfishPlaceholder(): THREE.Group {
 
 const BUILDERS: Record<ModelName, () => THREE.Group> = {
   diver: buildDiverPlaceholder,
-  reefClown: () => buildReefFishPlaceholder("reefClown"),
-  reefTang: () => buildReefFishPlaceholder("reefTang"),
-  reefMoorish: () => buildReefFishPlaceholder("reefMoorish"),
-  reefYellow: () => buildReefFishPlaceholder("reefYellow"),
-  barramundi: () => buildReefFishPlaceholder("reefYellow"), // 載入前的替代幾何借用黃色礁魚
-  mackerel: buildMackerelPlaceholder,
+  clownfish: () => buildReefFishPlaceholder("clownfish"),
+  butterflyfish: () => buildReefFishPlaceholder("butterflyfish"),
+  barramundi: () => buildReefFishPlaceholder("barramundi"),
+  tuna: buildMackerelPlaceholder, // 載入前的替代幾何（銀藍色紡錘體）
   turtle: buildTurtlePlaceholder,
   hammerhead: buildHammerheadPlaceholder,
   anglerfish: buildAnglerfishPlaceholder,
