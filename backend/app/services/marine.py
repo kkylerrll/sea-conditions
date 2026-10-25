@@ -113,12 +113,14 @@ def _estimate_visibility_m(wave_height_m: float | None) -> float | None:
     return round(max(3.0, 16.0 - wave_height_m * 6.0), 1)
 
 
-_RETRY_BACKOFF_S = 2.0
+# 第 1、2 次失敗後各等幾秒（共 3 次嘗試）；批次後只剩 2 個請求，多等一點很便宜
+_RETRY_BACKOFFS_S = (2.0, 5.0)
 
 
-def _get_with_retry(client: httpx.Client, url: str, params: dict) -> dict:
-    """GET → JSON。遇 429 / 5xx / 逾時 / 連線錯誤只重試一次（等 2 秒），其他直接拋。"""
-    for attempt in (1, 2):
+def _get_with_retry(client: httpx.Client, url: str, params: dict):
+    """GET → JSON。遇 429 / 5xx / 逾時 / 連線錯誤最多重試兩次（等 2、5 秒），其他直接拋。"""
+    attempts = len(_RETRY_BACKOFFS_S) + 1
+    for attempt in range(1, attempts + 1):
         try:
             resp = client.get(url, params=params)
             resp.raise_for_status()
@@ -127,19 +129,44 @@ def _get_with_retry(client: httpx.Client, url: str, params: dict) -> dict:
             retryable = not isinstance(exc, httpx.HTTPStatusError) or (
                 exc.response.status_code == 429 or exc.response.status_code >= 500
             )
-            if attempt == 2 or not retryable:
+            if attempt == attempts or not retryable:
                 raise
-            log.warning("Open-Meteo 請求失敗（%s），%.0f 秒後重試一次", type(exc).__name__, _RETRY_BACKOFF_S)
-            time.sleep(_RETRY_BACKOFF_S)
+            wait = _RETRY_BACKOFFS_S[attempt - 1]
+            log.warning(
+                "Open-Meteo 請求失敗（%s），%.0f 秒後重試（第 %d/%d 次）",
+                type(exc).__name__, wait, attempt + 1, attempts,
+            )
+            time.sleep(wait)
     raise RuntimeError("unreachable")
+
+
+def _as_list(payload, n: int) -> list[dict]:
+    """多座標時 Open-Meteo 回 list（依輸入順序）、單一座標回 dict；統一成 list 並檢查筆數。"""
+    items = payload if isinstance(payload, list) else [payload]
+    if len(items) != n:
+        raise ValueError(f"Open-Meteo 回傳 {len(items)} 筆，預期 {n} 筆")
+    return items
 
 
 def fetch_daily(lat: float, lon: float, days: int = 4, timeout: float = 15.0) -> list[dict]:
     """回傳從今天起 `days` 天、每天一筆的海況 dict（已含 source="openmeteo"）。"""
+    return fetch_daily_many([(lat, lon)], days=days, timeout=timeout)[0]
+
+
+def fetch_daily_many(
+    coords: list[tuple[float, float]], days: int = 4, timeout: float = 30.0
+) -> list[list[dict]]:
+    """一次批次抓多個地點：海況、風各 1 個請求（不是每個地點各 2 個）。
+
+    回傳與 `coords` 同順序、每個地點一份 fetch_daily 格式的 rows。
+    排程在 GitHub Actions 上連續開 26 條 TLS 連線常被逾時，批次後只剩 2 條。
+    """
+    lats = ",".join(str(lat) for lat, _ in coords)
+    lons = ",".join(str(lon) for _, lon in coords)
 
     marine_params = {
-        "latitude": lat,
-        "longitude": lon,
+        "latitude": lats,
+        "longitude": lons,
         "daily": "wave_height_max,wave_period_max,wave_direction_dominant",
         # 逐時資料：算時段彙整；順便帶 SST，省掉第三次請求
         "hourly": "wave_height,wave_period,wave_direction,sea_surface_temperature",
@@ -147,8 +174,8 @@ def fetch_daily(lat: float, lon: float, days: int = 4, timeout: float = 15.0) ->
         "forecast_days": days,
     }
     forecast_params = {
-        "latitude": lat,
-        "longitude": lon,
+        "latitude": lats,
+        "longitude": lons,
         "daily": "wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant",
         "hourly": "wind_speed_10m,wind_gusts_10m,wind_direction_10m",
         "wind_speed_unit": "ms",
@@ -157,9 +184,17 @@ def fetch_daily(lat: float, lon: float, days: int = 4, timeout: float = 15.0) ->
     }
 
     with httpx.Client(timeout=timeout) as client:
-        marine = _get_with_retry(client, _MARINE_URL, marine_params)
-        forecast = _get_with_retry(client, _FORECAST_URL, forecast_params)
+        marines = _as_list(_get_with_retry(client, _MARINE_URL, marine_params), len(coords))
+        forecasts = _as_list(_get_with_retry(client, _FORECAST_URL, forecast_params), len(coords))
 
+    return [
+        _build_rows(marine, forecast, lat, lon)
+        for (lat, lon), marine, forecast in zip(coords, marines, forecasts)
+    ]
+
+
+def _build_rows(marine: dict, forecast: dict, lat: float, lon: float) -> list[dict]:
+    """單一地點的 marine / forecast 回應 → 每天一筆的海況 dict。"""
     md = marine.get("daily", {}) or {}
     fd = forecast.get("daily", {}) or {}
     dates = md.get("time") or fd.get("time") or []
