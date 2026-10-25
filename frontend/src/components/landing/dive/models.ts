@@ -5,9 +5,8 @@
 // （原始檔在 public/landing/models/src/，未進版控，見 .gitignore）。若某天
 // 那個檔案不見了，loadCreatureModel()（見 engine.ts 的 tryLoadModel）載入
 // 失敗時會 console.warn 並改用 buildPlaceholder() 產生的替代幾何頂上，
-// 讓頁面在有沒有模型檔的情況下都能動——這不是理論上的 fallback，七個 glb
-// 壓縮前都曾經是這樣先跑通的（四個 reefXxx 項目共用同一個 reef-school.glb,
-// 實際還是七個檔案,見下面 ModelEntry.reefMeshIndex 的說明）。
+// 讓頁面在有沒有模型檔的情況下都能動——這不是理論上的 fallback，每個 glb
+// 壓縮前都曾經是這樣先跑通的。
 //
 // scale 是從每個原始 GLB 的 bbox 反推的：Sketchfab 模型各自帶著來源 DCC
 // 軟體的原始單位（有些是公尺，有些明顯是公分甚至更怪的尺度），量出的數字
@@ -15,14 +14,14 @@
 // 的模型，這個 scale 八成要重算，不能直接套用。
 
 import * as THREE from "three";
+import type { ProceduralSwim } from "./swim";
 
 export type ModelName =
   | "diver"
-  | "reefClown"
-  | "reefTang"
-  | "reefMoorish"
-  | "reefYellow"
-  | "mackerel"
+  | "clownfish"
+  | "butterflyfish"
+  | "barramundi"
+  | "tuna"
   | "turtle"
   | "hammerhead"
   | "anglerfish"
@@ -87,6 +86,13 @@ export type ModelEntry = {
    * （實測只拿 head 時,身體軸線仍在 -100°～140° 之間亂轉）。
    */
   stripRotationMatch?: string[];
+  /**
+   * 靜態（沒骨架、沒動畫片段）的寫實模型用的程序化游動，見 swim.ts：
+   * 載入時對每個實例的材質注入頂點彎曲 shader，ω 跟著引擎當下速度倍率走。
+   * 有填這個欄位的模型不需要 animationClip（沒有片段時引擎不建 mixer）。
+   * 長軸省略時由 geometry bbox 自動量；headSign 看不出來時用 ?diveDebug=<kind> 確認。
+   */
+  proceduralSwim?: ProceduralSwim;
   /** 模型原始比例跟場景不一致時的統一縮放。 */
   scale: number;
   /** 模型原始朝向跟「往下潛、面朝畫面前方」不一致時的修正角度（弧度）。 */
@@ -126,212 +132,160 @@ export const MODEL_REGISTRY: Record<ModelName, ModelEntry> = {
       license: "CC BY 4.0",
     },
   },
-  // 四個 reefXxx 都指向同一份 reef-school.glb（見上面 reefMeshIndex 的說明）
-  // ——這個檔案本身是 4 個獨立 SkinnedMesh、共用一棵骨架樹、被同一條 41 秒
-  // 的烘焙動畫驅動。拆成 4 個登記表項目之前,整個引擎把這個模型當「一個
-  // 生物」處理：5 個實例＝5 份完整的 4 魚骨架一起複製貼上,魚自己又被那條
-  // 烘焙動畫帶著繞圈／亂游（動畫本身的細節見下面「魚繞圈／倒退游根因」的
-  // 說明），疊起來就是使用者回報的「魚在原地打轉、倒退游」。拆成 4 個
-  // 獨立項目之後,每個只掛對應的那一個 mesh,可以各自給 travelYaw、各自
-  // 算直線位移,不再整包一起動。
-  //
-  // 魚繞圈／倒退游根因（用 gltf-transform 等工具直接讀這個 glb 的 JSON
-  // 查出來的，不是猜的）：這個骨架每條魚的「Root」骨頭本身完全沒有被
-  // 動畫到（0 個 channel）；真正帶著整條魚到處跑的是 Root 正下方的
-  // head／Spine_01 兩根骨頭的 translation track——換句話說，烘焙動畫把
-  // 「全身移動」錄成了「第一節脊椎骨自己平移」，而不是錄在真正的根骨頭上。
-  // 引擎原本又在 Object3D 層級疊了一層自己的路徑移動（pseudoNoise 漂移／
-  // 群體路徑），兩層位移互相打架，才會看起來像亂轉圈。
-  // 修法：把 clip 裡「所有 translation track」整批拿掉（不分是不是根骨頭,
-  // 因為真正的根骨頭反而沒有 track，是它的直屬子骨頭在搬家),只留
-  // rotation track——那才是「尾巴／脊椎彎動、鰭片拍動」的局部擺動,見
-  // engine.ts 的 sanitizeSwimClip()。不是用程序化擺動取代,因為真的烘焙
-  // 動畫在拿掉 translation 之後就是乾淨的原地游動,沒有必要捨棄。
-  // round 9 實測回饋：這個 mesh 實際是 3 條小丑魚以不同角度疊在一起的
-  // 一簇幾何（不是乾淨的單條魚),轉 travelYaw 怎麼調都沒辦法讓牠看起來
-  // 「頭朝前」——問題在幾何本身疊疊樂，不是朝向算錯。拿掉 engine.ts
-  // spawnCreatures() 正式場景的生成（count 分給 reefTang/Moorish/Yellow
-  // 三種),但登記表項目保留,?diveDebug=all 跟 ?diveDebug=reefClown 還是
-  // 能看到牠,之後要是找到辦法分開這簇幾何再放回生成名單即可。
-  reefClown: {
-    path: "/landing/models/reef-school.glb",
-    reefMeshIndex: 0,
-    reefKeepPrefix: "Clown1",
-    sanitizeSwim: true,
-    stripRotationMatch: ["head", "Spine_01"],
-    scale: 1,
+  // round 19：寫實替換（Sketchfab CC BY 4.0，下載後用 gltf-transform optimize 壓成 webp＋meshopt）。
+  // 舊的 reef-school.glb（LasquetiSpice，四種卡通礁魚共用一棵骨架）已移除。
+  // 小丑魚：zixisun02 的靜態模型（zbrush＋Substance，1.6k 面，PBR 貼圖），沒有骨架
+  // 也沒有動畫，靠 proceduralSwim 擺尾。原始 bbox 長軸 z（-1~1，頭朝 +z 待截圖確認）。
+  clownfish: {
+    path: "/landing/models/clownfish.glb",
+    scale: 0.5,
     rotationOffset: new THREE.Euler(0, 0, 0),
-    // round 11：拿掉 head＋Spine_01 旋轉之後,量 head→Spine_End 的世界向量：
-    // travelYaw=0 時 dir=+1 指向 0°、dir=-1 指向 180°（只剩 ±25° 尾部擺動）,
-    // 四種 reefXxx 結論相同。先前的 Math.PI/2 是配合沒拿乾淨的轉身動畫調出來的。
     travelYaw: 0,
     depthM: 8,
-    animationClip: "Animation",
+    animationClip: "",
+    proceduralSwim: { headSign: 1, amp: 0.06, wavelength: 1.0, style: "subcarangiform" },
     credit: {
-      title: "Animated Swimming Tropical Fish School Loop",
-      author: "LasquetiSpice",
-      url: "https://sketchfab.com/3d-models/62ccf83b35c744d7b5ffb7be80d4ea99",
+      title: "Clownfish",
+      author: "zixisun02",
+      url: "https://sketchfab.com/3d-models/47ba2679d91a4f14b3fc0bf8e3805af5",
       license: "CC BY 4.0",
     },
   },
-  reefTang: {
-    path: "/landing/models/reef-school.glb",
-    reefMeshIndex: 1,
-    reefKeepPrefix: "blue_tang1",
-    sanitizeSwim: true,
-    stripRotationMatch: ["head", "Spine_01"],
-    // round 9 回饋：8m 深度的珊瑚礁魚看起來只是小點,放大約 2.5 倍跟潛水員
-    // 放在一起才讀得出「魚」的形狀——跟鯖魚／海龜／鎚頭鯊之前同樣幅度的
-    // 放大是同一個理由（見下面那幾種的註解）。
-    scale: 2.5,
+  // 蝴蝶魚：Dsanchez13 的 Copperband Butterflyfish（Substance 手繪貼圖，3.7k 面）。
+  // 靜態，原始 bbox 長軸 x（-1~1），靠 proceduralSwim。
+  butterflyfish: {
+    path: "/landing/models/butterflyfish.glb",
+    scale: 0.7,
     rotationOffset: new THREE.Euler(0, 0, 0),
-    travelYaw: 0, // round 11：?diveDebug=all 量過,見 reefClown 的說明
+    travelYaw: Math.PI / 2,
     depthM: 8,
-    animationClip: "Animation",
+    animationClip: "",
+    proceduralSwim: { axis: "x", headSign: -1, amp: 0.05, wavelength: 1.1, style: "subcarangiform" },
     credit: {
-      title: "Animated Swimming Tropical Fish School Loop",
-      author: "LasquetiSpice",
-      url: "https://sketchfab.com/3d-models/62ccf83b35c744d7b5ffb7be80d4ea99",
+      title: "Copperband Butterflyfish",
+      author: "Dsanchez13",
+      url: "https://sketchfab.com/3d-models/f96d04dc6ccb4fe4861622ea24fae361",
       license: "CC BY 4.0",
     },
   },
-  reefMoorish: {
-    path: "/landing/models/reef-school.glb",
-    reefMeshIndex: 2,
-    reefKeepPrefix: "moorish1",
-    sanitizeSwim: true,
-    stripRotationMatch: ["head", "Spine_01"],
-    scale: 2.5,
+  // round 17：Khronos glTF-Sample-Assets 的 BarramundiFish（Microsoft，CC0）——
+  // 目前找到唯一「寫實、PBR、免登入可下載」的魚：魚鱗法線貼圖＋AO＋粗糙度，
+  // 2.2k 頂點／3.9k 三角形，原檔 12.5MB（三張 2048 PNG）→ 1024 webp＋meshopt 後 ~310KB。
+  // 亞洲鱸（金目鱸），台灣沿岸也有。沒有骨架也沒有動畫，靠 proceduralSwim 擺尾。
+  // 原始 bbox：x -0.069~0.074、y 0~0.287、z -0.325~0.318（單位公尺，體長 0.64），
+  // 長軸 z、頭朝 +z（引擎的 lookAt 讓模型 +Z 對準前進方向，所以 travelYaw=0）。
+  // scale 3.4 → 體長約 2.2 單位（跟 2.5× 礁魚、3.5 單位鯖魚同一個量級）。
+  barramundi: {
+    path: "/landing/models/barramundi.glb",
+    scale: 3.4,
     rotationOffset: new THREE.Euler(0, 0, 0),
-    travelYaw: 0, // round 11：?diveDebug=all 量過,見 reefClown 的說明
+    travelYaw: 0,
     depthM: 8,
-    animationClip: "Animation",
+    animationClip: "",
+    proceduralSwim: { headSign: 1, amp: 0.05, wavelength: 1.1, style: "subcarangiform" },
     credit: {
-      title: "Animated Swimming Tropical Fish School Loop",
-      author: "LasquetiSpice",
-      url: "https://sketchfab.com/3d-models/62ccf83b35c744d7b5ffb7be80d4ea99",
-      license: "CC BY 4.0",
+      title: "BarramundiFish (glTF Sample Assets)",
+      author: "Microsoft / Khronos Group",
+      url: "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/BarramundiFish",
+      license: "CC0 1.0",
     },
   },
-  reefYellow: {
-    path: "/landing/models/reef-school.glb",
-    reefMeshIndex: 3,
-    reefKeepPrefix: "Yellow1",
+  // 鮪魚：GoldenZtuff 的 Tuna Fish（黃鰭鮪，4k PBR 貼圖壓成 512 webp，7.9k 面，
+  // 骨架＋「Swim」動畫 1 秒迴圈）。
+  tuna: {
+    path: "/landing/models/tuna.glb",
     sanitizeSwim: true,
-    stripRotationMatch: ["head", "Spine_01"],
-    scale: 2.5,
-    rotationOffset: new THREE.Euler(0, 0, 0),
-    travelYaw: 0, // round 11：?diveDebug=all 量過,見 reefClown 的說明
-    depthM: 8,
-    animationClip: "Animation",
-    credit: {
-      title: "Animated Swimming Tropical Fish School Loop",
-      author: "LasquetiSpice",
-      url: "https://sketchfab.com/3d-models/62ccf83b35c744d7b5ffb7be80d4ea99",
-      license: "CC BY 4.0",
-    },
-  },
-  mackerel: {
-    path: "/landing/models/mackerel.glb",
-    // round 11：Swimming clip 量出來有 2 條 translation track 掛在非根骨頭
-    // 上（跟 reefXxx 同一種「局部骨頭被烘焙成全身位移」的模式）——清掉。
-    sanitizeSwim: true,
-    // 原始 bbox 長邊約 143 個單位——來源檔案用的是公分尺度，不是公尺；
-    // 0.01 換算回來長邊約 1.4 單位，但回饋說中層生物在畫面上讀起來像「頂端
-    // 的小黑點」,縮太小——0.025（約 2.5 倍）換算後長邊約 3.5 單位，配合
-    // engine.ts spawnCreatures() 把鯖魚車道拉近（-1~-8）一起看才夠明顯。
-    scale: 0.025,
+    scale: 0.6,
     rotationOffset: new THREE.Euler(0, 0, 0),
     travelYaw: 0,
     depthM: 20,
-    animationClip: "Swimming",
+    animationClip: "Swim",
     credit: {
-      title: "Atlantic Mackerel (Animated and Game-ready)",
-      author: "1shxxn",
-      url: "https://sketchfab.com/3d-models/eca6071c26fc4013b8c94a3f37a434c7",
+      title: "Tuna Fish",
+      author: "GoldenZtuff",
+      url: "https://sketchfab.com/3d-models/642c6515d893474a8fc8f129491efcac",
       license: "CC BY 4.0",
     },
   },
+  // round 19：alvaniLa 的 GREEN TURTLE (PENYU HIJAU)——掃描感的靜態綠蠵龜（原 56k 面，
+  // simplify 後約 25k、1024 webp、specGloss 已轉 metalrough）。沒有骨架／動畫，長軸 z、
+  // 頭朝 +z（bbox z≈1.87、x≈2.0 是展開的前鰭），靠 flap 風格程序化拍鰭；scale 1.7 →
+  // 體長約 3.2 單位（跟舊版同量級）。
   turtle: {
     path: "/landing/models/turtle.glb",
-    // 原始 bbox 長邊約 1.27 單位。回饋：中層生物（含海龜）在畫面上太小太暗，
-    // 讀成頂端的小黑點——把 0.8 提高到 1.0（約 2.5 倍），長邊約 3.2 單位，
-    // 配合 zRange 拉近一起看才夠明顯。
-    scale: 1.0,
+    scale: 1.7,
     rotationOffset: new THREE.Euler(0, 0, 0),
     travelYaw: 0,
     depthM: 35,
-    // 來源檔案沒有真的游泳動畫（EmptyAction.001 只有 1 秒、20 個關鍵影格），
-    // 靠引擎那邊的程序化擺動撐住「活著」的感覺，不是漏接動畫。
-    animationClip: "EmptyAction.001",
+    animationClip: "",
+    proceduralSwim: { axis: "z", headSign: 1, amp: 0.08, wavelength: 1, style: "flap", omega: 4 },
     credit: {
-      title: "Model 53A - Flatback Sea Turtle",
-      author: "DigitalLife3D",
-      url: "https://sketchfab.com/3d-models/442372b7f02b4730882d41d959726156",
+      title: "GREEN TURTLE (PENYU HIJAU)",
+      author: "alvaniLa",
+      url: "https://sketchfab.com/3d-models/7465453867064871af799795277c7e3e",
       license: "CC BY 4.0",
     },
   },
+  // round 19：kenchoo 的 Hammerhead Shark（6.8k 面、白肚灰背 countershading、1024 webp，
+  // 骨架＋「Animation」迴圈）。烘焙動畫的根脊椎骨（IK_Back_Bone_01）旋轉 track 跟綁定
+  // 姿勢差約 90°，不拿掉整隻鯊魚會翻成肚皮朝鏡頭，所以 stripRotationMatch 拿掉它；
+  // 其餘骨頭的 translation 也清掉（sanitizeSwim）。長軸 x、頭在 -x，因此 travelYaw=π/2。
+  // 以 ?diveDebug=hammerhead 肉眼量體長：scale 0.105 約 4 單位（跟舊版同量級）。
   hammerhead: {
     path: "/landing/models/hammerhead.glb",
-    // round 11：Armature|Action 量出來身體主幹骨頭（Bone.002_01 往下）帶
-    // translation track——跟 reefXxx／mackerel 同一種模式，清掉比較保險。
     sanitizeSwim: true,
-    // 原始 bbox 長邊約 18.9 個單位（一樣是公分尺度）。原本縮到體長約 1.6
-    // 單位，但回饋說中層生物太小太暗——提高到約 4 單位（約 2.5 倍），配合
-    // zRange 拉近一起看才夠明顯。
-    scale: 0.21,
+    stripRotationMatch: ["IK_Back_Bone_01_jnt_"],
+    scale: 0.105,
     rotationOffset: new THREE.Euler(0, 0, 0),
-    travelYaw: 0,
+    travelYaw: Math.PI / 2,
     depthM: 35,
-    animationClip: "Armature|Action",
+    animationClip: "Animation",
     credit: {
-      title: "Scalloped Hammerhead Juvenile (LOW POLY)",
-      author: "sharkingaround",
-      url: "https://sketchfab.com/3d-models/f5adc17c922b48feae76aaea98552dd4",
+      title: "Hammerhead Shark",
+      author: "kenchoo",
+      url: "https://sketchfab.com/3d-models/1bb18da3050843f687de6753fb31b7c5",
       license: "CC BY 4.0",
     },
   },
+  // round 19：Poshel 的 Anglerfish（14k 面、掃描感皮膚＋利齒，貼圖 512 webp）。單一 mesh＋
+  // morph 權重動畫（沒有骨架），誘餌是幾何的一部分——engine.ts attachAnglerfishLure()
+  // 會在最高頂點（誘餌球泡）掛一顆 emissive 小球。scale 0.2 → 體長約 3.5 單位。
+  // 模型朝向：嘴朝 +x 時 travelYaw=π/2（沿用舊模型的結論，截圖確認嘴朝前進方向）。
   anglerfish: {
     path: "/landing/models/anglerfish.glb",
-    // 原始 bbox 最寬約 3.88 單位。原本縮到約 1.4 單位，但回饋說深海主角太小
-    // 太暗——提高到 0.28（約 2 倍，長邊約 2.8 單位），配合 zRange 拉近一起看。
-    scale: 0.28,
+    scale: 0.2,
     rotationOffset: new THREE.Euler(0, 0, 0),
-    // round 9：直線移動上線後實測，Math.PI（180 度）會讓牠正面朝攝影機——
-    // 跟其他物種不一樣，牠模型的靜止朝向偏了 90 度，不是 180 度。往 +X
-    // 移動時正確的疊加角是 Math.PI/2。
     travelYaw: Math.PI / 2,
     depthM: 1000,
-    animationClip: "Take 001",
+    animationClip: "GltfAnimation 0",
     credit: {
       title: "Anglerfish",
-      author: "Abby_Holzworth1",
-      url: "https://sketchfab.com/3d-models/5e2f4b2d2e1a4613a008b6caaf40d50c",
+      author: "Poshel",
+      url: "https://sketchfab.com/3d-models/802018f776bf4313a3b620b1d6d34ff7",
       license: "CC BY 4.0",
     },
   },
+  // round 19：n- 的 Simple Moon Jellyfish (Baked Animation)（Aurelia，台灣近海常見；5.4k 面）。
+  // 原檔場景裡有一個 84 面的 Cube_0 道具（縮圖上飄的方塊）——已用 gltf-transform 腳本
+  // 刪掉再 optimize，glb 裡沒有方塊。scale 0.2 → 鐘部直徑約 0.65 單位。
   jellyfish: {
     path: "/landing/models/jellyfish.glb",
-    // 原始 bbox 最寬約 10.4 個單位（含觸手），縮到鐘部直徑約 0.4 單位。
-    scale: 0.038,
+    scale: 0.2,
     rotationOffset: new THREE.Euler(0, 0, 0),
     travelYaw: 0,
     depthM: 1000,
-    // 來源檔案的動畫片段名稱就叫「200」（Sketchfab 匯出時沒重新命名），
-    // 不是漏改成 "Pulse"。
-    animationClip: "200",
+    animationClip: "Loop-400",
     credit: {
-      title: "Crystal Jellyfish (Leptomedusae)",
+      title: "Simple Moon Jellyfish (Baked Animation)",
       author: "n-",
-      url: "https://sketchfab.com/3d-models/38ac0d91213d447eb3366f615298ce8f",
+      url: "https://sketchfab.com/3d-models/3d911c511f2744ec9bfb99d46d2d6e14",
       license: "CC BY 4.0",
     },
   },
 };
 
-// 七個 glb 全部壓縮後總共只有～2.6MB（MODEL_REGISTRY 現在有 10 筆項目，
-// 但四個 reefXxx 共用同一個 reef-school.glb,實際網路請求／parse 只會
-// 發生一次,見 engine.ts tryLoadModel 的 path 快取），第二輪回饋之後不再
+// 九個 glb 壓縮後總共約 2.9MB（round 19，每個模型各一個檔案；engine.ts
+// tryLoadModel 仍以 path 當快取 key），第二輪回饋之後不再
 // 分批載入：分批（潛水員／珊瑚礁魚先載，深海生物等閒置或捲過 30% 才載）
 // 造成的實際後果是深海生物要嘛還沒載完、要嘛載完也已經被使用者捲過去了
 // ——體積小到不值得為了「省一點點初始頻寬」犧牲「深海生物準時出現」。
@@ -364,11 +318,10 @@ export const CREATURE_RIM_FLOOR: Partial<Record<ModelName, { color: number; max:
   // engine.ts 的 applyLoadedModel() 每次只處理「這個 kind 自己的那個
   // mesh」，不會像拆分之前那樣整棵共用骨架一起被同一次呼叫打上標籤，
   // 四個 kind 各自獨立賦值也不會互相覆蓋。
-  reefClown: { color: 0xbfe9ff, max: 0.18 },
-  reefTang: { color: 0xbfe9ff, max: 0.18 },
-  reefMoorish: { color: 0xbfe9ff, max: 0.18 },
-  reefYellow: { color: 0xbfe9ff, max: 0.18 },
-  mackerel: { color: 0xbfe9ff, max: 0.3 },
+  clownfish: { color: 0xbfe9ff, max: 0.18 },
+  butterflyfish: { color: 0xbfe9ff, max: 0.18 },
+  barramundi: { color: 0xbfe9ff, max: 0.18 },
+  tuna: { color: 0xbfe9ff, max: 0.3 },
   turtle: { color: 0xbfe9ff, max: 0.08 },
   hammerhead: { color: 0xbfe9ff, max: 0.08 },
   // 鮟鱇魚真的模型檔只有一顆材質（整條魚是單一 skinned mesh,沒有獨立的
