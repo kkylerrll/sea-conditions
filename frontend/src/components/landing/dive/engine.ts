@@ -53,9 +53,9 @@ import {
   JELLY_GLOW_BASE,
   JELLY_GLOW_AMP,
   JELLY_GLOW_SPEED,
-  JELLY_BELL_GLOW_RATIO,
   UNITS_PER_M,
   SMALL_FISH_LEGIBILITY_BOOST,
+  ABYSS_LEGIBILITY_BOOST,
   type ModelEntry,
   type ModelName,
 } from "./models";
@@ -169,6 +169,8 @@ const MACKEREL_Z = -2.5;
 // 左側文字欄右緣（佔畫面寬度的比例，globals.css 文字欄約 140~635px／1440px）。
 const SCHOOL_FORMATION_HALF_X = 2.4;
 const SCHOOL_TEXT_COLUMN_RIGHT_FRAC = 0.45;
+// round 20 第二輪：桌機鮟鱇魚車道左端（佔畫面寬度的比例），見 spawnCreatures 鮟鱇魚那段。
+const ANGLER_LANE_LEFT_FRAC = 0.47;
 
 // round 13：生物能到的最淺 Y（世界單位，海平面在 y=0）。約 3.4 m 深——再淺的話
 // 從水下往上看會看到魚貼在水面上，從水上看也可能被浪頭露出來。
@@ -459,7 +461,12 @@ function computeModelScale(name: ModelName, entry: ModelEntry, scene: THREE.Obje
   const size = box.getSize(new THREE.Vector3());
   const axis = entry.lengthAxis ?? entry.proceduralSwim?.axis;
   const measured = axis === "x" ? size.x : axis === "z" ? size.z : Math.max(size.x, size.z);
-  const boost = entry.legibilityBoost ? SMALL_FISH_LEGIBILITY_BOOST : 1;
+  const boost =
+    entry.legibilityBoost === "smallFish"
+      ? SMALL_FISH_LEGIBILITY_BOOST
+      : entry.legibilityBoost === "abyss"
+        ? ABYSS_LEGIBILITY_BOOST
+        : 1;
   const scale = (entry.bodyLengthM * UNITS_PER_M * boost) / Math.max(measured, 1e-6);
   // ?diveDebug 時印出量到的 bbox 跟換算結果，換模型時一眼看出單位有沒有怪。
   if (log) {
@@ -469,6 +476,121 @@ function computeModelScale(name: ModelName, entry: ModelEntry, scene: THREE.Obje
     );
   }
   return scale;
+}
+
+/** 點雲的最小主軸（共變異矩陣最小特徵值的特徵向量），用 Jacobi 旋轉解 3×3 對稱矩陣。 */
+function smallestPrincipalAxis(pts: THREE.Vector3[], c: THREE.Vector3): THREE.Vector3 {
+  const a = [
+    [0, 0, 0],
+    [0, 0, 0],
+    [0, 0, 0],
+  ];
+  for (const p of pts) {
+    const d = [p.x - c.x, p.y - c.y, p.z - c.z];
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) a[i][j] += d[i] * d[j];
+  }
+  const v = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+  ];
+  for (let sweep = 0; sweep < 20; sweep++) {
+    for (const [p, q] of [
+      [0, 1],
+      [0, 2],
+      [1, 2],
+    ]) {
+      if (Math.abs(a[p][q]) < 1e-12) continue;
+      const theta = (a[q][q] - a[p][p]) / (2 * a[p][q]);
+      const t = Math.sign(theta || 1) / (Math.abs(theta) + Math.sqrt(theta * theta + 1));
+      const cs = 1 / Math.sqrt(t * t + 1);
+      const sn = t * cs;
+      for (let k = 0; k < 3; k++) {
+        const akp = a[k][p];
+        const akq = a[k][q];
+        a[k][p] = cs * akp - sn * akq;
+        a[k][q] = sn * akp + cs * akq;
+      }
+      for (let k = 0; k < 3; k++) {
+        const apk = a[p][k];
+        const aqk = a[q][k];
+        a[p][k] = cs * apk - sn * aqk;
+        a[q][k] = sn * apk + cs * aqk;
+      }
+      for (let k = 0; k < 3; k++) {
+        const vkp = v[k][p];
+        const vkq = v[k][q];
+        v[k][p] = cs * vkp - sn * vkq;
+        v[k][q] = sn * vkp + cs * vkq;
+      }
+    }
+  }
+  let m = 0;
+  for (let i = 1; i < 3; i++) if (a[i][i] < a[m][m]) m = i;
+  return new THREE.Vector3(v[0][m], v[1][m], v[2][m]).normalize();
+}
+
+/**
+ * round 20 水母材質（n- 的 Simple Moon Jellyfish）。gltf-transform 的 palette 壓縮把材質
+ * 改名成 PaletteMaterial00x，原本比對 "bell" 的發光從來沒套上去過；而且每顆材質都掛著一格
+ * palette 色票當 map（alpha 幾乎是 0）跟一張全黑的 emissiveMap——加法混合乘的是 src alpha，
+ * 發光被壓成一層灰，觸手則整個看不見。這裡把兩張圖都拿掉，改用每個部位自己的 opacity／
+ * emissive。部位是逐一量過網格的 bbox 對出來的（鐘體最大、口腕懸在鐘體下方、生殖腺在中央）：
+ *   PaletteMaterial001  鐘體（內外兩層）——很淡的半透明，加 fresnel 邊緣光：正對鏡頭的鐘頂
+ *                       幾乎透明、鐘緣最亮，看起來才是「透得過去的一個罩子」而不是實心藥丸
+ *   Moon-Jelly_Canal2   輻管
+ *   PaletteMaterial002／Moon-Jelly_Canal1  中央四個生殖腺環（淡紫）
+ *   PaletteMaterial003／004  口腕（垂在鐘體下）
+ *   Moon-Jelly_Tentacle 鐘緣觸手
+ * 換了別的水母模型這張對照表就要重量。
+ */
+function styleJellyMaterial(m: THREE.MeshStandardMaterial) {
+  const n = m.name.toLowerCase();
+  const part = n.includes("tentacle")
+    ? "tentacle"
+    : n.includes("canal2")
+      ? "canal"
+      : n.includes("canal1") || n.includes("palettematerial002")
+        ? "gonad"
+        : n.includes("palettematerial003") || n.includes("palettematerial004")
+          ? "arm"
+          : "bell";
+  const P = {
+    // 鐘體內外兩層、輻管都是加法疊上去的，各自要很淡，疊起來才不會洗成實心白。
+    bell: { opacity: 0.3, emissive: 0x8fe8ff, k: 0.22, rim: 1.4 },
+    canal: { opacity: 0.25, emissive: 0xaef6ff, k: 0.3, rim: 0 },
+    gonad: { opacity: 0.45, emissive: 0xcdb8ff, k: 0.6, rim: 0 },
+    arm: { opacity: 0.4, emissive: 0xbff6ff, k: 0.45, rim: 0 },
+    tentacle: { opacity: 0.55, emissive: 0xd8fbff, k: 0.6, rim: 0 },
+  }[part];
+  m.map = null;
+  m.emissiveMap = null;
+  m.transparent = true;
+  m.depthWrite = false;
+  m.side = THREE.DoubleSide;
+  m.blending = THREE.AdditiveBlending;
+  // 底色壓暗：加法混合下，手電筒打在淺色底色上的漫射光會把鐘體洗成實心白，亮度交給 emissive。
+  m.color = new THREE.Color(0x1d3540);
+  m.opacity = P.opacity;
+  m.emissive = new THREE.Color(P.emissive);
+  m.emissiveIntensity = JELLY_GLOW_BASE * P.k;
+  m.userData.bioGlow = { base: JELLY_GLOW_BASE * P.k, amp: JELLY_GLOW_AMP * P.k, speed: JELLY_GLOW_SPEED };
+  if (P.rim > 0) {
+    const rim = P.rim.toFixed(2);
+    // fresnel：法線越接近垂直視線（鐘緣）越亮；DoubleSide 用 abs，內外兩面都成立。
+    m.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <emissivemap_fragment>",
+        `#include <emissivemap_fragment>
+  {
+    float jellyRim = 1.0 - abs(dot(normalize(normal), normalize(vViewPosition)));
+    totalEmissiveRadiance *= 0.15 + ${rim} * pow(jellyRim, 4.0);
+  }`,
+      );
+    };
+    m.customProgramCacheKey = () => `jellyRim:${rim}`;
+  }
+  m.needsUpdate = true;
 }
 
 type MotionKind = "straight" | "school" | "drift";
@@ -1066,42 +1188,7 @@ export class DiveEngine {
         if (!(obj instanceof THREE.Mesh)) return;
         const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
         for (const m of mats) {
-          if (!(m instanceof THREE.MeshStandardMaterial || m instanceof THREE.MeshPhysicalMaterial)) continue;
-          // round 20 回饋：水母暗到幾乎看不見——round 19 換成 n- 的模型之後，gltf-transform
-          // 的 palette 壓縮把鐘部材質改名成 PaletteMaterial00x，沒有任何材質名稱帶 "bell"，
-          // 這段發光從來沒套上去過。實際材質只有 Tentacle／Canal1／Canal2／PaletteMaterial*：
-          // 改成「不是觸手的都算鐘體」（鐘部＋輻管一起脈動發光），觸手維持淡淡半透明。
-          const lname = m.name.toLowerCase();
-          const isTentacle = lname.includes("tentacle");
-          const isCanal = lname.includes("canal");
-          m.transparent = true;
-          m.depthWrite = false;
-          // palette 壓縮也替每顆材質掛了一張 emissiveMap（palette 貼圖，原模型沒有自發光
-          // → 全黑），emissive 再亮乘上黑色還是黑——拿掉它，發光才真的出得來。map 也一樣
-          // 只是一格 palette 色票、alpha 幾乎是 0：加法混合乘的是 src alpha，留著它發光就被
-          // 壓成一層灰，拿掉之後 alpha 才由下面的 opacity 決定。花紋靠的是幾何本身——輻管
-          // （Canal*）是獨立 mesh，讓它比鐘體亮，四葉輻管的圖案自然就浮出來。
-          if (m.emissiveMap || (!isTentacle && m.map)) {
-            m.emissiveMap = null;
-            if (!isTentacle) m.map = null;
-            m.needsUpdate = true;
-          }
-          if (!isTentacle) {
-            // 鐘體：很淡的半透明冷光；輻管：亮一級。兩者都跟著收縮脈動（bioGlow）。
-            const k = isCanal ? 1 : JELLY_BELL_GLOW_RATIO;
-            m.blending = THREE.AdditiveBlending;
-            // 底色壓暗：加法混合下，手電筒打在淺色底色上的漫射光會把鐘體洗成一片實心白，
-            // 看起來就不像半透明的水母了——亮度主要交給 emissive。
-            m.color = new THREE.Color(isCanal ? 0x5a7f8f : 0x2e4650);
-            m.opacity = isCanal ? 0.45 : 0.16;
-            m.emissive = new THREE.Color(0x8ff5ff);
-            m.emissiveIntensity = JELLY_GLOW_BASE * k;
-            m.userData.bioGlow = { base: JELLY_GLOW_BASE * k, amp: JELLY_GLOW_AMP * k, speed: JELLY_GLOW_SPEED };
-          } else {
-            m.opacity = 0.35;
-            m.emissive = new THREE.Color(0x6fe0ff);
-            m.emissiveIntensity = 0.3;
-          }
+          if (m instanceof THREE.MeshStandardMaterial || m instanceof THREE.MeshPhysicalMaterial) styleJellyMaterial(m);
         }
       });
     }
@@ -1128,6 +1215,11 @@ export class DiveEngine {
     // 判斷,不要只認 reefMeshIndex,以後新模型有同樣問題也能直接在
     // models.ts 開關。
     if (entry.sanitizeSwim && clip) clip = sanitizeSwimClip(clip, entry.stripRotationMatch ?? []);
+    if (entry.stripNodeTracks && clip) {
+      const drop = entry.stripNodeTracks;
+      const kept = clip.tracks.filter((tr) => !drop.some((n) => tr.name.startsWith(`${n}.`)));
+      clip = new THREE.AnimationClip(clip.name, clip.duration, kept);
+    }
     const mixer = clip ? new THREE.AnimationMixer(scene) : null;
     if (mixer && clip) mixer.clipAction(clip).play();
 
@@ -1182,15 +1274,24 @@ export class DiveEngine {
       target.mixer = mixer && target === this.diver ? mixer : mixer ? new THREE.AnimationMixer(instance) : null;
       if (target.mixer && clip && target !== this.diver) target.mixer.clipAction(clip).play();
       if (name === "anglerfish") this.attachAnglerfishLure(instance);
+      if (name === "jellyfish" && target !== this.diver) this.uprightJelly(target, instance);
       // round 20：水母的發光要跟「自己」的收縮同步（見 updateCreatures 的 drift 分支），
       // cloneSkeleton 共用材質的話 12 隻會一起閃——每隻複製一份（userData 直接共用參照，
       // 理由同 swim.ts：clone 會把 Color 之類的 userData 做 JSON 深拷貝變樣）。
-      if (name === "jellyfish" && target !== this.diver) {
+      // 鮟鱇魚也要各自一份：桌機車道左端的淡入淡出是每隻各自的 opacity（anglerEdgeFade）。
+      if ((name === "jellyfish" || name === "anglerfish") && target !== this.diver) {
         instance.traverse((o) => {
+          if (o instanceof THREE.Sprite) {
+            o.material = o.material.clone();
+            return;
+          }
           if (!(o instanceof THREE.Mesh)) return;
           const own = (m: THREE.Material) => {
             const mm = m.clone();
             mm.userData = m.userData;
+            // Material.clone() 不會帶上 onBeforeCompile／customProgramCacheKey（fresnel 邊緣光）。
+            mm.onBeforeCompile = m.onBeforeCompile;
+            mm.customProgramCacheKey = m.customProgramCacheKey;
             return mm;
           };
           o.material = Array.isArray(o.material) ? o.material.map(own) : own(o.material);
@@ -1219,15 +1320,93 @@ export class DiveEngine {
    * ——跟 placeholders.ts 的 buildAnglerfishPlaceholder() 同一個設計語言（固定很亮、
    * 自體發光的小球，不掛額外光源）。舊模型（Abby_Holzworth1）有 Esca7_07 骨頭時仍走舊路徑。
    */
+  /**
+   * round 20 第二輪：讓水母鐘頂朝正上方、繞自己的中軸轉。拿掉 Pos_204 的翻滾 track 之後
+   * （見 models.ts stripNodeTracks），模型落回的綁定姿態本身就斜了約 40°，鐘心也不在原點
+   * ——直接量：鐘體網格蒙皮後的頂點做 PCA，最「薄」的那個主軸就是鐘的中軸，再用「口腕
+   * 中心在鐘體中心的哪一側」決定正負（口腕垂在下面）。算出的旋轉＋置中套在 instance 上，
+   * c.root 的漂浮／傾斜／自轉就都是繞著真正的鐘軸。同一個模型只量一次。
+   */
+  private jellyUpright: { q: THREE.Quaternion; center: THREE.Vector3 } | null = null;
+  private uprightJelly(c: Creature, instance: THREE.Object3D) {
+    if (!this.jellyUpright) {
+      c.mixer?.update(0);
+      instance.quaternion.identity();
+      instance.position.set(0, 0, 0);
+      c.root.updateMatrixWorld(true);
+      const toRoot = new THREE.Matrix4().copy(c.root.matrixWorld).invert();
+      const bell: THREE.Vector3[] = [];
+      const arms: THREE.Vector3[] = [];
+      instance.traverse((o) => {
+        if (!(o instanceof THREE.SkinnedMesh)) return;
+        const n = (o.material as THREE.Material).name.toLowerCase();
+        const bucket = n.includes("palettematerial001") ? bell : n.includes("palettematerial003") || n.includes("palettematerial004") ? arms : null;
+        if (!bucket) return;
+        const pos = o.geometry.getAttribute("position");
+        for (let i = 0; i < pos.count; i++) {
+          bucket.push(o.getVertexPosition(i, new THREE.Vector3()).applyMatrix4(o.matrixWorld).applyMatrix4(toRoot));
+        }
+      });
+      if (bell.length < 10) return;
+      const centroid = (pts: THREE.Vector3[]) => pts.reduce((a, p) => a.add(p), new THREE.Vector3()).divideScalar(pts.length);
+      const bc = centroid(bell);
+      let axis = smallestPrincipalAxis(bell, bc);
+      if (arms.length && axis.dot(bc.clone().sub(centroid(arms))) < 0) axis = axis.negate();
+      const q = new THREE.Quaternion().setFromUnitVectors(axis, UP);
+      this.jellyUpright = { q, center: bc };
+    }
+    const { q, center } = this.jellyUpright;
+    instance.quaternion.copy(q);
+    instance.position.copy(center).applyQuaternion(q).negate();
+  }
+
+  /** 鮟鱇魚在桌機車道左端（文字欄旁）1.2 單位內淡出；fromLeft＝離車道左端的距離。 */
+  private anglerEdgeFade(c: Creature, fromLeft: number) {
+    const alpha = this.narrowLayout ? 1 : THREE.MathUtils.smoothstep(fromLeft, 0, 1.2);
+    c.root.visible = c.root.visible && alpha > 0.01;
+    c.root.traverse((o) => {
+      if (!(o instanceof THREE.Mesh || o instanceof THREE.Sprite)) return;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) {
+        if (m.userData.baseOpacity === undefined) m.userData.baseOpacity = m.opacity;
+        const want = alpha < 0.999 || m.userData.baseOpacity < 1;
+        if (m.transparent !== want) {
+          m.transparent = want;
+          m.needsUpdate = true;
+        }
+        m.opacity = m.userData.baseOpacity * alpha;
+      }
+    });
+  }
+
+  private lureHaloTexture: THREE.Texture | null = null;
+  /** 誘餌光暈用的徑向漸層貼圖（中心亮、往外淡出），所有鮟鱇魚共用一張。 */
+  private getLureHaloTexture(): THREE.Texture {
+    if (this.lureHaloTexture) return this.lureHaloTexture;
+    const size = 64;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d")!;
+    const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    g.addColorStop(0, "rgba(255,255,255,1)");
+    g.addColorStop(0.25, "rgba(255,255,255,0.55)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+    this.lureHaloTexture = new THREE.CanvasTexture(canvas);
+    return this.lureHaloTexture;
+  }
+
   private attachAnglerfishLure(instance: THREE.Object3D) {
     instance.updateMatrixWorld(true);
     const lure = new THREE.Mesh(
       new THREE.SphereGeometry(1, 8, 8),
       new THREE.MeshStandardMaterial({ color: 0xbfffe0, emissive: 0x6dffb8, emissiveIntensity: 2.2, roughness: 0.4 }),
     );
-    // round 20：0.07 是給舊版 3.5 單位長的鮟鱇魚調的；真實比例的魚只有 0.36 單位，
-    // 誘餌球改成約體長的 6%（真的鮟鱇魚誘餌球大概一顆彈珠大）。
-    const desiredWorldRadius = 0.022;
+    // round 20：0.07 是給舊版 3.5 單位長的鮟鱇魚調的；現在的魚約 1.2 單位，誘餌球半徑取
+    // 約體長的 3%，外面再套一圈加法混合的光暈 sprite（見下面），在全黑的深淵裡才「亮得起來」。
+    const desiredWorldRadius = 0.035;
     const bone = instance.getObjectByName("Esca7_07");
     let host: THREE.Object3D | null = bone ?? null;
     if (bone) {
@@ -1263,6 +1442,20 @@ export class DiveEngine {
     const worldScale = new THREE.Vector3();
     host.getWorldScale(worldScale);
     lure.scale.setScalar(desiredWorldRadius / Math.max(worldScale.x, 1e-6));
+    // 光暈：球體本身只是一顆亮點，真的誘餌發光會在水裡暈開一圈。sprite 掛在 lure 底下，
+    // 本地縮放 7 倍 ≈ 世界半徑 0.25；depthWrite:false 避免擋住後面的東西。
+    const halo = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: this.getLureHaloTexture(),
+        color: 0x7dffc4,
+        transparent: true,
+        opacity: 0.85,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    halo.scale.setScalar(7);
+    lure.add(halo);
     host.add(lure);
   }
 
@@ -1403,7 +1596,9 @@ export class DiveEngine {
     // JELLY_RANGE 的說明）,數量給足才會在整段深潛過程持續有東西經過。
     // round 20：0.6 m 的鮟鱇魚（0.36 單位）放在 -7 太遠，拉到潛水員附近 -2.5~0.8，
     // 剛好落在潛水員手電筒照得到的距離。
-    const angler = this.spawnInRange("anglerfish", "straight", ANGLER_RANGE, this.mobile ? 3 : 5, [-2.5, 0.8]);
+    // round 20 第二輪：體長改成 1.0 m × 深淵放大（1.2 單位），車道再收到 -1.5~0.8（離鏡頭
+    // 5.2~7.5，潛水員在 5）——桌機畫面上約 140~210 px，仍然不會比潛水員更貼近鏡頭。
+    const angler = this.spawnInRange("anglerfish", "straight", ANGLER_RANGE, this.mobile ? 3 : 4, [-1.5, 0.8]);
     for (const c of angler) {
       // round 11：鮟鱇魚是伏擊型掠食者,真實行為是「幾乎不動、原地等」,
       // 不是巡游——glideSpeed 降到接近 0,只留一點漂移感。放慢不影響
@@ -1425,8 +1620,13 @@ export class DiveEngine {
         c.laneWidth = visW + 2;
         c.laneCenterX = 0;
       } else {
-        c.laneWidth = (visW * 2) / 3 + 2;
-        c.laneCenterX = visW / 6;
+        // round 20 第二輪：魚放大到 1.2 單位之後，舊的「右側 2/3」（左緣在畫面 33%）會讓
+        // 半條魚壓在文字欄上（文字最右到約 44%）。車道左端改在畫面 47% 再加半個體長，右端
+        // 在畫面外；左端那段由 anglerEdgeFade() 淡入淡出，換邊不會在觀眾眼前憑空跳出來。
+        const leftX = (ANGLER_LANE_LEFT_FRAC - 0.5) * visW + 0.7;
+        const rightX = visW / 2 + 1.5;
+        c.laneWidth = rightX - leftX;
+        c.laneCenterX = (leftX + rightX) / 2;
       }
     }
     // 水母沒有明確的前進方向，維持原地垂直漂浮＋小幅度搖擺（drift，見
@@ -1435,7 +1635,8 @@ export class DiveEngine {
     // 的小擺動），全部疊成畫面正中間的一直排。現在每隻在建立時抽一個自己的 posX，
     // 分散在可視寬度內（桌機跟鮟鱇魚一樣只用右側 2/3，不疊到左邊文字欄）。35 cm 的
     // 鐘部＝0.21 單位，車道拉近到 -2~2.5（離鏡頭 3.5~8）才看得出是水母。
-    const jellyCount = this.mobile ? 7 : 12;
+    // round 20 第二輪：鐘體放大 2 倍之後 12 隻會擠成一團，降到 8／5。
+    const jellyCount = this.mobile ? 5 : 8;
     const jelly = this.spawnInRange("jellyfish", "drift", JELLY_RANGE, jellyCount, [-2, 2.5]);
     for (const c of jelly) {
       c.radius = 0.15 + Math.random() * 0.2; // 左右搖擺幅度（單位）
@@ -2335,6 +2536,7 @@ export class DiveEngine {
           const zOff = Math.sin(t * c.zFreq + c.phase * 1.7) * zAmp;
           const vz = Math.cos(t * c.zFreq + c.phase * 1.7) * zAmp * c.zFreq;
           c.root.position.set(c.posX + c.laneCenterX, c.posY + bob, c.laneZ + zOff);
+          if (c.kind === "anglerfish" && !c.isPlaceholder) this.anglerEdgeFade(c, c.posX + half);
 
           // 目標朝向 = 固定朝向（quatTarget，含 travelYaw）之上疊世界軸旋轉：
           //   偏航 δ（繞 Y）與俯仰 φ（繞 Z，乘 dir 讓左右游的魚抬頭方向一致）
@@ -2408,11 +2610,15 @@ export class DiveEngine {
           c.posY += (0.16 * thrust - 0.03) * dt;
           const sway = Math.sin(t * 0.21 + c.phase * 1.3) * c.radius;
           c.root.position.set(c.laneCenterX + c.posX + sway, c.posY, c.laneZ);
-          // 直立、只有很小的傾斜（搖擺時鐘頂微微偏向前進方向），緩慢自轉。
+          // 鐘頂朝上、緩慢自轉，總傾斜 ≤ 約 15°。round 20 第二輪回饋：水母在鏡頭下方時是
+          // 「從上往下」看，扁圓鐘體被看成一顆藥丸——依牠相對鏡頭的仰角，把鐘頂往遠離鏡頭的
+          // 方向推一點（最多 0.2 rad），看到的就是側面／略從下方，鐘體跟下面垂的口腕才看得出來。
+          const below = Math.atan2(this.cameraY - c.posY, 6 - c.laneZ);
+          const lean = -THREE.MathUtils.clamp(below * 0.8, -0.18, 0.18);
           c.root.rotation.set(
-            Math.sin(t * 0.17 + c.phase) * 0.08,
+            lean + Math.sin(t * 0.17 + c.phase) * 0.05,
             t * 0.05 + c.phase,
-            Math.cos(t * 0.21 + c.phase * 1.3) * 0.1,
+            Math.cos(t * 0.21 + c.phase * 1.3) * 0.06,
           );
           break;
         }

@@ -33,6 +33,14 @@ export const UNITS_PER_M = (1.98 * 0.55) / 1.8;
  */
 export const SMALL_FISH_LEGIBILITY_BOOST = 1.6;
 
+/**
+ * 深海主角的「看得清楚」放大倍率（round 20 第二輪回饋：深淵段「鮟鱇魚是小黑點、整段看起來
+ * 是空的」）。1000 m 的畫面只有手電筒那一圈光，真實比例的水母、鮟鱇魚在鏡頭 5~8 公尺外只
+ * 剩幾十個像素；這兩種是使用者點名的深淵主角，所以明確放大 2 倍——跟小魚那個倍率一樣是
+ * 寫出來的取捨，不是把體長灌水。
+ */
+export const ABYSS_LEGIBILITY_BOOST = 2;
+
 export type ModelName =
   | "diver"
   | "clownfish"
@@ -104,6 +112,12 @@ export type ModelEntry = {
    */
   stripRotationMatch?: string[];
   /**
+   * round 20 第二輪：整個拿掉這些節點（完整名稱）的所有 track。跟 sanitizeSwim 不同——
+   * 那個會清掉全部 translation，水母的鐘體收縮正是靠 B0_* 骨頭的 translation 做的，不能全清；
+   * 這裡只點名「把整隻生物搬來搬去／翻滾」的那一根。
+   */
+  stripNodeTracks?: string[];
+  /**
    * 靜態（沒骨架、沒動畫片段）的寫實模型用的程序化游動，見 swim.ts：
    * 載入時對每個實例的材質注入頂點彎曲 shader，ω 跟著引擎當下速度倍率走。
    * 有填這個欄位的模型不需要 animationClip（沒有片段時引擎不建 mixer）。
@@ -118,8 +132,9 @@ export type ModelEntry = {
   bodyLengthM: number;
   /** 量體長用的軸；海龜展開的前鰭比體長寬，要指定 z，不能讓「最長水平軸」量到翼展。 */
   lengthAxis?: "x" | "z";
-  /** 小型礁魚才填 true：套用 SMALL_FISH_LEGIBILITY_BOOST（見該常數的說明）。 */
-  legibilityBoost?: boolean;
+  /** 可讀性放大：小型礁魚填 "smallFish"（SMALL_FISH_LEGIBILITY_BOOST），深淵主角填
+      "abyss"（ABYSS_LEGIBILITY_BOOST），見各常數的說明。 */
+  legibilityBoost?: "smallFish" | "abyss";
   /**
    * 固定縮放（覆寫 bodyLengthM 的換算）。只有潛水員用——UNITS_PER_M 本身就是
    * 從潛水員的 0.55 推出來的，潛水員不能再反過來用體長算自己。
@@ -171,7 +186,7 @@ export const MODEL_REGISTRY: Record<ModelName, ModelEntry> = {
     path: "/landing/models/clownfish.glb",
     // 眼斑雙鋸魚成魚約 11 cm。
     bodyLengthM: 0.11,
-    legibilityBoost: true,
+    legibilityBoost: "smallFish",
     rotationOffset: new THREE.Euler(0, 0, 0),
     travelYaw: 0,
     depthM: 8,
@@ -190,7 +205,7 @@ export const MODEL_REGISTRY: Record<ModelName, ModelEntry> = {
     path: "/landing/models/butterflyfish.glb",
     // 三間火箭（copperband）成魚約 18 cm。
     bodyLengthM: 0.18,
-    legibilityBoost: true,
+    legibilityBoost: "smallFish",
     rotationOffset: new THREE.Euler(0, 0, 0),
     travelYaw: Math.PI / 2,
     depthM: 8,
@@ -290,12 +305,14 @@ export const MODEL_REGISTRY: Record<ModelName, ModelEntry> = {
   },
   // round 19：Poshel 的 Anglerfish（14k 面、掃描感皮膚＋利齒，貼圖 512 webp）。單一 mesh＋
   // morph 權重動畫（沒有骨架），誘餌是幾何的一部分——engine.ts attachAnglerfishLure()
-  // 會在最高頂點（誘餌球泡）掛一顆 emissive 小球。體長取 0.6 m（大型深海鮟鱇的
-  // 上限；round 20 以前 scale 0.2 → 3.5 單位，等於 5.8 m）。
+  // 會在最高頂點（誘餌球泡）掛一顆 emissive 小球（round 20 以前 scale 0.2 → 3.5 單位，
+  // 等於 5.8 m）。
   // 模型朝向：嘴朝 +x 時 travelYaw=π/2（沿用舊模型的結論，截圖確認嘴朝前進方向）。
   anglerfish: {
     path: "/landing/models/anglerfish.glb",
-    bodyLengthM: 0.6,
+    // round 20 第二輪：大型深海鮟鱇（Ceratias 雌魚）可達 1.2 m，取 1.0 m，再乘深淵放大倍率。
+    bodyLengthM: 1.0,
+    legibilityBoost: "abyss",
     rotationOffset: new THREE.Euler(0, 0, 0),
     travelYaw: Math.PI / 2,
     depthM: 1000,
@@ -309,11 +326,16 @@ export const MODEL_REGISTRY: Record<ModelName, ModelEntry> = {
   },
   // round 19：n- 的 Simple Moon Jellyfish (Baked Animation)（Aurelia，台灣近海常見；5.4k 面）。
   // 原檔場景裡有一個 84 面的 Cube_0 道具（縮圖上飄的方塊）——已用 gltf-transform 腳本
-  // 刪掉再 optimize，glb 裡沒有方塊。海月水母鐘部直徑約 35 cm（bodyLengthM 填的是
-  // 鐘部直徑，最長水平軸量到的就是鐘緣）。
+  // 刪掉再 optimize，glb 裡沒有方塊。海月水母鐘部直徑 25~40 cm，取 0.4 m（bodyLengthM
+  // 填的是鐘部直徑，最長水平軸量到的就是鐘緣），再乘深淵放大倍率。
   jellyfish: {
     path: "/landing/models/jellyfish.glb",
-    bodyLengthM: 0.35,
+    // Loop-400 的最上層骨頭 Pos_204 帶著整隻水母的位移＋翻滾（同一幀量到 rot 2.3／-0.7／2.1
+    // rad），疊在引擎自己的漂浮上就變成「斜 30~40° 的碟子」。拿掉它，水母的位置跟朝向只
+    // 由引擎決定，鐘體收縮（其餘骨頭）照常播。
+    stripNodeTracks: ["Pos_204"],
+    bodyLengthM: 0.4,
+    legibilityBoost: "abyss",
     rotationOffset: new THREE.Euler(0, 0, 0),
     travelYaw: 0,
     depthM: 1000,
@@ -382,10 +404,8 @@ export const CREATURE_RIM_FLOOR: Partial<Record<ModelName, { color: number; max:
 // speed 是脈動角速度（rad/s）。跟 CREATURE_RIM_FLOOR 分開——水母的發光是
 // 牠的主要外觀語言，不是「深度越深才浮現」的底線,所以用固定幅度脈動,
 // 不跟 environmentDarkness 掛鉤（水母本來就只出現在最深的 ABYSS_RANGE）。
-// round 20：這組數值現在是「輻管」（Canal*）的亮度；鐘體乘上 JELLY_BELL_GLOW_RATIO，只是
-// 一層很淡的冷光（見 engine.ts applyLoadedModel 的 jellyfish 分支）。脈動幅度加大，收縮時
-// 亮、放鬆時暗，才看得出「一縮一放」。
-export const JELLY_GLOW_BASE = 0.9;
-export const JELLY_GLOW_AMP = 0.35;
-export const JELLY_BELL_GLOW_RATIO = 0.35;
+// round 20：各部位（鐘體／輻管／生殖腺／口腕／觸手）再各乘自己的係數，見 engine.ts 的
+// styleJellyMaterial()。脈動幅度約 ±45%，收縮時亮、放鬆時暗，才看得出「一縮一放」。
+export const JELLY_GLOW_BASE = 1.6;
+export const JELLY_GLOW_AMP = 0.7;
 export const JELLY_GLOW_SPEED = 1.1;
