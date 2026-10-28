@@ -53,6 +53,10 @@ import {
   JELLY_GLOW_BASE,
   JELLY_GLOW_AMP,
   JELLY_GLOW_SPEED,
+  JELLY_BELL_GLOW_RATIO,
+  UNITS_PER_M,
+  SMALL_FISH_LEGIBILITY_BOOST,
+  type ModelEntry,
   type ModelName,
 } from "./models";
 import { buildPlaceholder, addDiverRimShader } from "./placeholders";
@@ -99,7 +103,7 @@ function sampleDepthGradient(depthM: number): { top: THREE.Color; bottom: THREE.
 
 // 除錯模式 `?diveDebug=all`（見 setupDebugAllScene）：每個模型依自己的
 // bbox 最長邊正規化到這個世界單位長度——不用 models.ts 裡那份給正式場景
-// 調好的 scale（那份是配合攝影機景深/車道距離算的，七種生物刻意大小不一），
+// 真實比例 scale（bodyLengthM 換算，小丑魚跟鎚頭鯊差將近 20 倍），
 // 除錯排排站要讓大家「看起來差不多大」才方便一次比較朝向。
 const DEBUG_ALL_TARGET_SIZE = 1.6;
 // 除錯排排站：所有生物固定速度從左往右移動（不套用 sin 波來回，見使用者
@@ -123,7 +127,10 @@ const DIVER_RIM_MAX_STRENGTH = 1.3;
 // （MIN_CREATURE_DEPTH_M）之後——水面上不會有任何生物。progressAt(深度) 寫的區間
 // 本來就以公尺為準，不用搬。
 const REEF_RANGE: [number, number] = [remapLegacyProgress(0.02), remapLegacyProgress(0.35)];
-const SCHOOL_RANGE: [number, number] = [remapLegacyProgress(0.25), remapLegacyProgress(0.55)];
+// round 20 回饋：「20~40 m 有一大群很奇怪的魚」，而且到 100 m 還蓋在文字上——舊的
+// remapLegacyProgress(0.25~0.55) 換成深度大約是 15~100 m。改用 progressAt() 直接寫
+// 公尺：黃鰭鮪群只在 15~45 m 出現。
+const SCHOOL_RANGE: [number, number] = [progressAt(15), progressAt(45)];
 // 原本上緣停在 0.7（約 43m），水母要等到 progressAt(90)（約 0.78）才上場——
 // 中間 43~90m 這段捲動區間沒有任何生物的 band 覆蓋到,畫面會整個空掉。
 // 上緣延到 progressAt(120)，跟水母新的下緣（progressAt(90)）重疊一段，
@@ -155,7 +162,13 @@ const JELLY_RANGE: [number, number] = [progressAt(90), 1.0];
 // 鯖魚的 zRange（[-8,-1]）中點附近即可，不需要跟每個成員的 laneZ 對齊
 // ——那個 laneZ 只用來算 recycleGroupY 的 viewHalf 跟景深（視覺上的遠近
 // 分散），跟這裡的水平位置是兩件事。
-const MACKEREL_Z = -4.5;
+// round 20：體型改成真實比例後（1.6 m 的鮪魚＝0.97 單位），-4.5 太遠會縮成一排小點；
+// 拉到 -2.5（離鏡頭 8.5，在潛水員 z≈1 的後面，不會比潛水員更貼近鏡頭）。
+const MACKEREL_Z = -2.5;
+// round 20：鮪魚群隊形的水平半寬（見 spawnCreatures 的 formationOffset）跟桌機版
+// 左側文字欄右緣（佔畫面寬度的比例，globals.css 文字欄約 140~635px／1440px）。
+const SCHOOL_FORMATION_HALF_X = 2.4;
+const SCHOOL_TEXT_COLUMN_RIGHT_FRAC = 0.45;
 
 // round 13：生物能到的最淺 Y（世界單位，海平面在 y=0）。約 3.4 m 深——再淺的話
 // 從水下往上看會看到魚貼在水面上，從水上看也可能被浪頭露出來。
@@ -414,6 +427,50 @@ function keepOnlyFirstReefFish(mesh: THREE.SkinnedMesh, keepPrefix: string): num
 //            本身也是「直線移動」,只是位移量從群體算,不是各自獨立算。
 //   drift    水母——沒有前進方向,維持原地的垂直漂浮＋小幅度搖擺,不再
 //            繞圈。
+/**
+ * round 20：從模型自己的 bbox 反推縮放值，讓世界大小＝真實體長 × UNITS_PER_M（見
+ * models.ts 的 bodyLengthM）。量的是「scale=1、rotationOffset 已套用」的姿態。
+ *
+ * 靜態 mesh：原始幾何 bbox × matrixWorld。SkinnedMesh 不能這樣量——原始頂點常常
+ * 是另一套單位（鎚頭鯊原始幾何只有 0.06 長，真正的大小藏在骨架的縮放裡），一定要
+ * 走骨架：updateMatrixWorld 之後 SkinnedMesh.computeBoundingBox() 會逐頂點套骨頭
+ * 矩陣。這時 scale=1、rotationOffset 也跟 GLTFLoader 綁定骨架當下一致，所以
+ * bindMatrix 不會有 computeReefRecenterOffset 說的那種對不上的問題。
+ */
+function computeModelScale(name: ModelName, entry: ModelEntry, scene: THREE.Object3D, log: boolean): number {
+  if (entry.fixedScale !== undefined) return entry.fixedScale;
+  scene.scale.setScalar(1);
+  scene.updateMatrixWorld(true);
+  const box = new THREE.Box3();
+  const tmp = new THREE.Box3();
+  scene.traverse((o) => {
+    if (o instanceof THREE.SkinnedMesh) {
+      o.computeBoundingBox();
+      if (o.boundingBox) box.union(tmp.copy(o.boundingBox).applyMatrix4(o.matrixWorld));
+      return;
+    }
+    if (!(o instanceof THREE.Mesh)) return;
+    const g = o.geometry as THREE.BufferGeometry;
+    if (!g.boundingBox) g.computeBoundingBox();
+    if (!g.boundingBox) return;
+    box.union(tmp.copy(g.boundingBox).applyMatrix4(o.matrixWorld));
+  });
+  if (box.isEmpty()) return 1;
+  const size = box.getSize(new THREE.Vector3());
+  const axis = entry.lengthAxis ?? entry.proceduralSwim?.axis;
+  const measured = axis === "x" ? size.x : axis === "z" ? size.z : Math.max(size.x, size.z);
+  const boost = entry.legibilityBoost ? SMALL_FISH_LEGIBILITY_BOOST : 1;
+  const scale = (entry.bodyLengthM * UNITS_PER_M * boost) / Math.max(measured, 1e-6);
+  // ?diveDebug 時印出量到的 bbox 跟換算結果，換模型時一眼看出單位有沒有怪。
+  if (log) {
+    console.info(
+      `[landing] ${name} bbox ${size.x.toFixed(3)}×${size.y.toFixed(3)}×${size.z.toFixed(3)} → scale ${scale.toFixed(4)}` +
+        `（${entry.bodyLengthM} m${boost !== 1 ? ` ×${boost}` : ""} ＝ ${(entry.bodyLengthM * UNITS_PER_M * boost).toFixed(2)} 單位）`,
+    );
+  }
+  return scale;
+}
+
 type MotionKind = "straight" | "school" | "drift";
 
 type Creature = {
@@ -599,6 +656,8 @@ export class DiveEngine {
   // 「他在往下滑」的效果，所以這裡直接拿掉落後，只留數值平滑。
   private cameraY = 0;
   private cameraX = 0;
+  // round 20：school 群體目前的不透明度（見 schoolTextFade），groupX 那一圈算、各成員讀。
+  private schoolAlpha = new Map<ModelName, number>();
   // round 13：捲動進度平滑（臨界阻尼彈簧），見 smoothProgress()。
   private sp = 0;
   private spVel = 0;
@@ -949,8 +1008,8 @@ export class DiveEngine {
     const scene = gltf.scene;
     scene.rotation.copy(entry.rotationOffset);
     if (this.debugKind === "all") {
-      // 除錯排排站：不用正式場景那份配合攝影機景深調的 scale（各物種
-      // 刻意大小不一），改成量出每個模型目前的 bbox 最長邊，反推一個讓
+      // 除錯排排站：不用正式場景那份真實比例的 scale（bodyLengthM 換算，
+      // 各物種大小差很多），改成量出每個模型目前的 bbox 最長邊，反推一個讓
       // 大家都正規化到 DEBUG_ALL_TARGET_SIZE 的縮放值——這樣排排站時每隻
       // 生物看起來差不多大，才方便一次比較朝向。scale 先設回 1 再量
       // （rotation 已經套用，量到的是「修正朝向後」的 bbox），量完才把
@@ -970,7 +1029,7 @@ export class DiveEngine {
       const maxDim = Math.max(size.x, size.y, size.z, 1e-6);
       scene.scale.setScalar(DEBUG_ALL_TARGET_SIZE / maxDim);
     } else {
-      scene.scale.setScalar(entry.scale);
+      scene.scale.setScalar(computeModelScale(name, entry, scene, !!this.debugKind));
     }
     // 中層生物（珊瑚礁魚／鯖魚／海龜／鎚頭鯊）跟鮟鱇魚的「身體」統一用同一套
     // 通用 rim floor（見 models.ts 的 CREATURE_RIM_FLOOR）——深度越深、材質
@@ -988,6 +1047,12 @@ export class DiveEngine {
         for (const m of mats) {
           if (m instanceof THREE.MeshStandardMaterial || m instanceof THREE.MeshPhysicalMaterial) {
             m.userData.rimFloor = { color: new THREE.Color(rimFloor.color), max: rimFloor.max };
+            // round 20：useSkinMap 的物種（鮟鱇魚）讓 emissive 乘上皮膚貼圖，發光跟著
+            // 紋理明暗走——沒有 emissiveMap 時 emissive 是一整片平塗色，會把貼圖蓋掉。
+            if (rimFloor.useSkinMap && m.map && !m.emissiveMap) {
+              m.emissiveMap = m.map;
+              m.needsUpdate = true;
+            }
           }
         }
       });
@@ -1002,15 +1067,36 @@ export class DiveEngine {
         const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
         for (const m of mats) {
           if (!(m instanceof THREE.MeshStandardMaterial || m instanceof THREE.MeshPhysicalMaterial)) continue;
-          const isBell = m.name.toLowerCase().includes("bell");
+          // round 20 回饋：水母暗到幾乎看不見——round 19 換成 n- 的模型之後，gltf-transform
+          // 的 palette 壓縮把鐘部材質改名成 PaletteMaterial00x，沒有任何材質名稱帶 "bell"，
+          // 這段發光從來沒套上去過。實際材質只有 Tentacle／Canal1／Canal2／PaletteMaterial*：
+          // 改成「不是觸手的都算鐘體」（鐘部＋輻管一起脈動發光），觸手維持淡淡半透明。
+          const lname = m.name.toLowerCase();
+          const isTentacle = lname.includes("tentacle");
+          const isCanal = lname.includes("canal");
           m.transparent = true;
           m.depthWrite = false;
-          if (isBell) {
+          // palette 壓縮也替每顆材質掛了一張 emissiveMap（palette 貼圖，原模型沒有自發光
+          // → 全黑），emissive 再亮乘上黑色還是黑——拿掉它，發光才真的出得來。map 也一樣
+          // 只是一格 palette 色票、alpha 幾乎是 0：加法混合乘的是 src alpha，留著它發光就被
+          // 壓成一層灰，拿掉之後 alpha 才由下面的 opacity 決定。花紋靠的是幾何本身——輻管
+          // （Canal*）是獨立 mesh，讓它比鐘體亮，四葉輻管的圖案自然就浮出來。
+          if (m.emissiveMap || (!isTentacle && m.map)) {
+            m.emissiveMap = null;
+            if (!isTentacle) m.map = null;
+            m.needsUpdate = true;
+          }
+          if (!isTentacle) {
+            // 鐘體：很淡的半透明冷光；輻管：亮一級。兩者都跟著收縮脈動（bioGlow）。
+            const k = isCanal ? 1 : JELLY_BELL_GLOW_RATIO;
             m.blending = THREE.AdditiveBlending;
-            m.opacity = 0.55;
+            // 底色壓暗：加法混合下，手電筒打在淺色底色上的漫射光會把鐘體洗成一片實心白，
+            // 看起來就不像半透明的水母了——亮度主要交給 emissive。
+            m.color = new THREE.Color(isCanal ? 0x5a7f8f : 0x2e4650);
+            m.opacity = isCanal ? 0.45 : 0.16;
             m.emissive = new THREE.Color(0x8ff5ff);
-            m.emissiveIntensity = JELLY_GLOW_BASE;
-            m.userData.bioGlow = { base: JELLY_GLOW_BASE, amp: JELLY_GLOW_AMP, speed: JELLY_GLOW_SPEED };
+            m.emissiveIntensity = JELLY_GLOW_BASE * k;
+            m.userData.bioGlow = { base: JELLY_GLOW_BASE * k, amp: JELLY_GLOW_AMP * k, speed: JELLY_GLOW_SPEED };
           } else {
             m.opacity = 0.35;
             m.emissive = new THREE.Color(0x6fe0ff);
@@ -1086,10 +1172,30 @@ export class DiveEngine {
         target.swim = applyProceduralSwim(instance, entry.proceduralSwim, target.phase);
       }
       old.clear();
+      // round 20 回饋（「魚的大小比例很奇怪」的另一半根因）：placeholders.ts 的替代幾何
+      // 為了「中層／深海生物太小」把整個 group 放大（鮪魚／海龜／鎚頭鯊 2.5 倍、鮟鱇魚
+      // 2 倍），真模型載入後卻直接塞進同一個 group——等於真模型的 scale 又被偷偷乘了一次
+      // 2~2.5 倍，這才是海龜比潛水員大好幾倍的原因。真模型的大小已經由 bodyLengthM 決定，
+      // 換內容時要把容器的縮放歸 1。
+      old.scale.setScalar(1);
       old.add(instance);
       target.mixer = mixer && target === this.diver ? mixer : mixer ? new THREE.AnimationMixer(instance) : null;
       if (target.mixer && clip && target !== this.diver) target.mixer.clipAction(clip).play();
       if (name === "anglerfish") this.attachAnglerfishLure(instance);
+      // round 20：水母的發光要跟「自己」的收縮同步（見 updateCreatures 的 drift 分支），
+      // cloneSkeleton 共用材質的話 12 隻會一起閃——每隻複製一份（userData 直接共用參照，
+      // 理由同 swim.ts：clone 會把 Color 之類的 userData 做 JSON 深拷貝變樣）。
+      if (name === "jellyfish" && target !== this.diver) {
+        instance.traverse((o) => {
+          if (!(o instanceof THREE.Mesh)) return;
+          const own = (m: THREE.Material) => {
+            const mm = m.clone();
+            mm.userData = m.userData;
+            return mm;
+          };
+          o.material = Array.isArray(o.material) ? o.material.map(own) : own(o.material);
+        });
+      }
       target.isPlaceholder = false;
       if (target !== this.diver) {
         const tagged = collectTaggedMaterials(instance);
@@ -1119,7 +1225,9 @@ export class DiveEngine {
       new THREE.SphereGeometry(1, 8, 8),
       new THREE.MeshStandardMaterial({ color: 0xbfffe0, emissive: 0x6dffb8, emissiveIntensity: 2.2, roughness: 0.4 }),
     );
-    const desiredWorldRadius = 0.07;
+    // round 20：0.07 是給舊版 3.5 單位長的鮟鱇魚調的；真實比例的魚只有 0.36 單位，
+    // 誘餌球改成約體長的 6%（真的鮟鱇魚誘餌球大概一顆彈珠大）。
+    const desiredWorldRadius = 0.022;
     const bone = instance.getObjectByName("Esca7_07");
     let host: THREE.Object3D | null = bone ?? null;
     if (bone) {
@@ -1150,7 +1258,7 @@ export class DiveEngine {
       lure.position.copy(bestLocal);
     }
     if (!host) return;
-    // host 節點本身已被模型內部縮放跟 entry.scale 層層縮小，球體半徑要除掉累積縮放，
+    // host 節點本身已被模型內部縮放跟 bodyLengthM 換算出的 scale 層層縮小，球體半徑要除掉累積縮放，
     // 世界空間看起來才是固定大小。
     const worldScale = new THREE.Vector3();
     host.getWorldScale(worldScale);
@@ -1162,7 +1270,7 @@ export class DiveEngine {
       中心——直接讀幾何的原始（未蒙皮）position attribute,不透過
       SkinnedMesh.getVertexPosition()／applyBoneTransform()。試過蒙皮版本,
       量出來的位移大了兩個數量級（bindMatrix 只在 .bind() 當下設一次、
-      不會跟著之後的 scene.scale.setScalar(entry.scale) 更新,但
+      不會跟著之後的 scene.scale.setScalar(...) 更新,但
       bindMatrixInverse 會在每次 updateMatrixWorld() 自動跟最新的
       matrixWorld 同步——兩者對不起來,算出來的世界座標整個跑掉)。原始
       position 本來就是蒙皮的「bind pose」基準,這條魚現在的骨架姿態（見
@@ -1170,7 +1278,7 @@ export class DiveEngine {
       bind pose,用原始頂點夠準,也完全不用管 bindMatrix 這個坑。量出來的點
       還要再乘一次 mesh.matrix——這個 mesh 節點自己相對 instance 還有一層
       本地縮放（reef-school.glb 原始匯出的單位換算,約 0.00063 倍,量過才
-      知道),不是只有 instance 本身的 entry.scale 這一層。 */
+      知道),不是只有 instance 本身的 scale 這一層。 */
   private computeReefRecenterOffset(mesh: THREE.SkinnedMesh, vertices: number[]): THREE.Vector3 {
     const posAttr = mesh.geometry.getAttribute("position");
     const box = new THREE.Box3();
@@ -1236,12 +1344,17 @@ export class DiveEngine {
     // （桌機 18~24 條、混合種類）——桌機三種各 7 條＝21 條,手機三種各 4
     // 條＝12 條。
     // round 17：reefYellow 換成寫實的 barramundi（CC0 靜態模型＋程序化擺尾）。
+    // round 20：體型改成真實比例（models.ts bodyLengthM）——11~18 cm 的礁魚放在舊車道
+    // （-10~-4，離鏡頭 10~16）只剩幾個像素。車道改成 -1~3.5（離鏡頭 2.5~7）：小魚本來
+    // 就是「近的才看得到」，潛水員在 z≈1，有的魚在牠前面、有的在後面。游速也跟著體型
+    // 降下來（舊的 0.35~0.6 單位／秒對 0.1 單位長的魚是每秒 5 個體長，像在逃命）；數量
+    // 小幅加到 9／5，小魚多一點才讀得出是礁區。
     const REEF_KINDS: ModelName[] = ["clownfish", "butterflyfish", "barramundi"];
-    const reefCountPerKind = this.mobile ? 4 : 7;
+    const reefCountPerKind = this.mobile ? 5 : 9;
     for (const kind of REEF_KINDS) {
-      const reef = this.spawnInRange(kind, "straight", REEF_RANGE, reefCountPerKind, [-10, -4]);
+      const reef = this.spawnInRange(kind, "straight", REEF_RANGE, reefCountPerKind, [-1, 3.5]);
       for (const c of reef) {
-        c.glideSpeed = 0.35 + Math.random() * 0.25;
+        c.glideSpeed = kind === "barramundi" ? 0.2 + Math.random() * 0.12 : 0.1 + Math.random() * 0.1;
       }
     }
 
@@ -1250,8 +1363,10 @@ export class DiveEngine {
     // 同一個群體 Y 座標（見 update() 裡的 recycleGroupY），個體只在隊形裡
     // 有一個固定的小偏移。回饋：魚群要「明顯變大」，桌機 25~40 條、手機
     // 減半，車道拉近到 -1~-8。
-    const mackerelCount = this.mobile ? 12 : 24; // round 19：鯖魚換成黃鰭鮪（體型較大、面數較高），群數減少
-    const mackerel = this.spawnInRange("tuna", "school", SCHOOL_RANGE, mackerelCount, [-8, -1]);
+    // round 20 回饋：24 條巨大鮪魚排成一面牆——改成 10／6 條、隊形收緊（見下面
+    // formationOffset），單隻體型也改回真實的 1.6 m。
+    const mackerelCount = this.mobile ? 6 : 10;
+    const mackerel = this.spawnInRange("tuna", "school", SCHOOL_RANGE, mackerelCount, [-3.5, -1.5]);
     const mackerelDir: 1 | -1 = Math.random() < 0.5 ? 1 : -1;
     const mackerelSpeed = 0.5 + Math.random() * 0.2;
     this.groupX.set("tuna", { x: 0, dir: mackerelDir, speed: mackerelSpeed, initialized: false });
@@ -1261,10 +1376,11 @@ export class DiveEngine {
       // 之後要重算一次朝向,不然朝向會停在剛剛那個被覆寫掉的隨機方向上。
       c.dir = mackerelDir; // 只給 setFixedTravelOrientation 算朝向用，位移本身讀 this.groupX
       this.setFixedTravelOrientation(c);
-      // 隊形偏移：一個扁平、比畫面寬的橢圓分布,不是擠成一小球。
+      // 隊形偏移：扁平橢圓、魚與魚之間約 1~2 個體長（真的鮪魚群是鬆散但同向的
+      // 一團）。round 20 以前是 ±6／±3 的大橢圓，配上放大的魚就變成一面牆。
       const a = Math.random() * Math.PI * 2;
-      const r = Math.random();
-      c.formationOffset.set(Math.cos(a) * r * 6, (Math.random() - 0.5) * 1.6, Math.sin(a) * r * 3);
+      const r = Math.sqrt(Math.random());
+      c.formationOffset.set(Math.cos(a) * r * SCHOOL_FORMATION_HALF_X, (Math.random() - 0.5) * 0.9, Math.sin(a) * r * 1.0);
     }
 
     // round 11 回饋：海龜在 35m+ 出現不寫實——改放到淺水 TURTLE_RANGE
@@ -1272,18 +1388,22 @@ export class DiveEngine {
     // 真的鎚頭鯊活動深度）自己一種,數量補到桌機 3／手機 2 彌補海龜搬走。
     // laneWidth 用 spawnInRange 算好的預設值（依各自 laneZ 反推的可視寬度），
     // 不用再手動寫 26／30 這種固定數字。
-    const turtle = this.spawnInRange("turtle", "straight", TURTLE_RANGE, this.mobile ? 1 : 2, [-8, -1]);
+    // round 20：大型動物的車道上限 ≤ 潛水員所在的 z≈1，不會比潛水員更貼近鏡頭
+    // （舊版 -1 + 錯誤的 scale 讓海龜佔掉半個畫面）。
+    const turtle = this.spawnInRange("turtle", "straight", TURTLE_RANGE, this.mobile ? 1 : 2, [-3, 0.5]);
     for (const c of turtle) {
       // round 11：海龜是慢速滑行的生物,不是衝刺——降到 0.3~0.4。
       c.glideSpeed = 0.3 + Math.random() * 0.1;
     }
-    const hammerhead = this.spawnInRange("hammerhead", "straight", DROP_RANGE, this.mobile ? 2 : 3, [-8, -1]);
+    const hammerhead = this.spawnInRange("hammerhead", "straight", DROP_RANGE, this.mobile ? 2 : 3, [-6, 0]);
     for (const c of hammerhead) {
       c.glideSpeed = 0.35 + Math.random() * 0.15;
     }
     // 深海兩種是使用者點名的主角，範圍限制在真正的深淵（見 ANGLER_RANGE／
     // JELLY_RANGE 的說明）,數量給足才會在整段深潛過程持續有東西經過。
-    const angler = this.spawnInRange("anglerfish", "straight", ANGLER_RANGE, this.mobile ? 3 : 5, [-7, -1]);
+    // round 20：0.6 m 的鮟鱇魚（0.36 單位）放在 -7 太遠，拉到潛水員附近 -2.5~0.8，
+    // 剛好落在潛水員手電筒照得到的距離。
+    const angler = this.spawnInRange("anglerfish", "straight", ANGLER_RANGE, this.mobile ? 3 : 5, [-2.5, 0.8]);
     for (const c of angler) {
       // round 11：鮟鱇魚是伏擊型掠食者,真實行為是「幾乎不動、原地等」,
       // 不是巡游——glideSpeed 降到接近 0,只留一點漂移感。放慢不影響
@@ -1311,11 +1431,21 @@ export class DiveEngine {
     }
     // 水母沒有明確的前進方向，維持原地垂直漂浮＋小幅度搖擺（drift，見
     // updateCreatures 的說明——round 8 拿掉了舊版的環繞路徑)。
-    const jellyCount = this.mobile ? 7 : 13;
-    const jelly = this.spawnInRange("jellyfish", "drift", JELLY_RANGE, jellyCount, [-7, -1]);
+    // round 20 回饋：「水母游的方法很奇怪」——舊版每隻水母的 x 都只有 sway（以 0 為中心
+    // 的小擺動），全部疊成畫面正中間的一直排。現在每隻在建立時抽一個自己的 posX，
+    // 分散在可視寬度內（桌機跟鮟鱇魚一樣只用右側 2/3，不疊到左邊文字欄）。35 cm 的
+    // 鐘部＝0.21 單位，車道拉近到 -2~2.5（離鏡頭 3.5~8）才看得出是水母。
+    const jellyCount = this.mobile ? 7 : 12;
+    const jelly = this.spawnInRange("jellyfish", "drift", JELLY_RANGE, jellyCount, [-2, 2.5]);
     for (const c of jelly) {
-      c.radius = 0.6 + Math.random() * 0.8;
-      c.speed = 0.3 + Math.random() * 0.3;
+      c.radius = 0.15 + Math.random() * 0.2; // 左右搖擺幅度（單位）
+      c.speed = 0.8 + Math.random() * 0.5; // 收縮脈動角速度（rad/s）：週期約 5~8 秒
+      // 桌機用畫面寬度 48%~96% 這一段（標題字最右到約 44%，鮟鱇魚那種「右側 2/3」左緣在
+      // 33%，水母會漂到標題上），再扣掉搖擺幅度 c.radius，左右晃也不會晃進文字欄。
+      const visW = this.visibleWidthAt(6 - c.laneZ);
+      const usable = this.narrowLayout ? visW * 0.9 : Math.max(visW * 0.48 - 2 * c.radius, 0.2);
+      c.laneCenterX = this.narrowLayout ? 0 : visW * 0.22;
+      c.posX = (Math.random() - 0.5) * usable;
     }
   }
 
@@ -2091,6 +2221,25 @@ export class DiveEngine {
     return this.visibleWidthAt(6 - representativeZ) / 2 + 2;
   }
 
+  /** round 20：魚群的車道。半寬多留 1.5 單位，隊形（±2.4）整群離開畫面才換邊。
+      不用鮟鱇魚的 laneCenterX（只走右側 2/3）：那個做法車道左端落在畫面中間，
+      整群魚會在觀眾眼前憑空跳到另一邊；桌機改用 schoolTextFade() 淡出。 */
+  private schoolLane(): { half: number; centerX: number } {
+    return { half: this.groupLaneHalfWidth(MACKEREL_Z) + 1.5, centerX: 0 };
+  }
+
+  /** round 20 回饋：鮪魚群蓋在左邊文字欄上。桌機版文字欄右緣約在畫面 45% 處——
+      魚群左緣一碰到這條線就開始淡出、整群在文字欄上方時完全透明，換邊也發生在
+      看不見的時候；往右游時則從文字欄右緣淡入。窄螢幕文字置中、背景本來就壓暗，
+      不淡出。回傳 0~1 的不透明度。 */
+  private schoolTextFade(groupX: number): number {
+    if (this.narrowLayout) return 1;
+    const visW = this.visibleWidthAt(6 - MACKEREL_Z);
+    const boundaryX = this.cameraX + (2 * SCHOOL_TEXT_COLUMN_RIGHT_FRAC - 1) * (visW / 2);
+    const left = groupX - SCHOOL_FORMATION_HALF_X;
+    return THREE.MathUtils.smoothstep(left, boundaryX - 0.5, boundaryX + 2);
+  }
+
   private updateCreatures(
     t: number,
     dt: number,
@@ -2108,7 +2257,7 @@ export class DiveEngine {
     for (const [kind, g] of this.groupX) {
       const rep = this.creatures.find((c) => c.kind === kind);
       const active = !!rep && progress >= rep.bandMin && progress <= rep.bandMax;
-      const half = this.groupLaneHalfWidth(MACKEREL_Z);
+      const half = this.schoolLane().half;
       if (!active) {
         g.initialized = false;
         continue;
@@ -2120,6 +2269,23 @@ export class DiveEngine {
         g.x += g.dir * g.speed * dt;
         if (g.x > half) g.x -= half * 2;
         else if (g.x < -half) g.x += half * 2;
+      }
+      // 整群共用一份材質（cloneSkeleton 不複製材質），淡出只要改一次。
+      if (rep && !rep.isPlaceholder) {
+        const alpha = this.schoolTextFade(g.x + this.schoolLane().centerX);
+        rep.root.traverse((o) => {
+          if (!(o instanceof THREE.Mesh)) return;
+          const mats = Array.isArray(o.material) ? o.material : [o.material];
+          for (const m of mats) {
+            const wantTransparent = alpha < 0.999;
+            if (m.transparent !== wantTransparent) {
+              m.transparent = wantTransparent;
+              m.needsUpdate = true;
+            }
+            m.opacity = alpha;
+          }
+        });
+        this.schoolAlpha.set(kind, alpha);
       }
     }
 
@@ -2207,9 +2373,10 @@ export class DiveEngine {
             c.root.visible = false;
             break;
           }
-          c.root.visible = true;
+          // 淡到幾乎透明時直接不畫（見 schoolTextFade），省得透明物件的排序問題。
+          c.root.visible = (this.schoolAlpha.get(c.kind) ?? 1) > 0.01;
           const g = this.groupX.get(c.kind);
-          const gx = g ? g.x : 0;
+          const gx = (g ? g.x : 0) + this.schoolLane().centerX;
           const bob = Math.sin(t * 0.4 + c.phase) * 0.15;
           // round 12：隊形偏移加上各自相位的小幅漂移，成員不再同步移動。
           c.root.position.set(
@@ -2232,10 +2399,21 @@ export class DiveEngine {
           // 「搖擺幅度基準」跟「脈動角速度」,不是繞圈半徑／角速度。
           this.recyclePosY(c, active, viewHalf, RECYCLE_MARGIN, refY, dt, cameraSpeed);
           if (!active) break;
-          const sway = Math.sin(t * c.speed * 0.3 + c.phase) * (c.radius * 0.4);
-          const bob = Math.sin(t * c.speed + c.phase) * 0.6;
-          c.root.position.set(sway, c.posY + bob, c.laneZ);
-          c.root.rotation.y = Math.sin(t * 0.15 + c.phase) * 0.3;
+          // round 20：真的海月水母是「收縮—滑行」：鐘部一收縮就往上竄一小段，放鬆時
+          // 減速、慢慢下沉一點，不是勻速上下 bob。速度 = 收縮推力（只在 sin>0 那半個
+          // 週期、平方讓推力集中在收縮中段）− 一點點下沉；posY 直接累加，離開視野一樣交
+          // 給 recyclePosY 回收。x 用自己的 posX＋laneCenterX，搖擺只是小幅疊加。
+          const pulse = Math.sin(t * c.speed + c.phase);
+          const thrust = pulse > 0 ? pulse * pulse : 0;
+          c.posY += (0.16 * thrust - 0.03) * dt;
+          const sway = Math.sin(t * 0.21 + c.phase * 1.3) * c.radius;
+          c.root.position.set(c.laneCenterX + c.posX + sway, c.posY, c.laneZ);
+          // 直立、只有很小的傾斜（搖擺時鐘頂微微偏向前進方向），緩慢自轉。
+          c.root.rotation.set(
+            Math.sin(t * 0.17 + c.phase) * 0.08,
+            t * 0.05 + c.phase,
+            Math.cos(t * 0.21 + c.phase * 1.3) * 0.1,
+          );
           break;
         }
       }
@@ -2258,7 +2436,10 @@ export class DiveEngine {
       if (c.bioGlowMaterials.length) {
         for (const m of c.bioGlowMaterials) {
           const glow = m.userData.bioGlow as BioGlowTag;
-          m.emissiveIntensity = glow.base + Math.sin(t * glow.speed + c.phase) * glow.amp;
+          // 水母用自己的收縮角速度 c.speed（跟 drift 分支的推力同一個 sin），亮的瞬間就是
+          // 往上竄的瞬間。
+          const w = c.kind === "jellyfish" ? c.speed : glow.speed;
+          m.emissiveIntensity = glow.base + Math.sin(t * w + c.phase) * glow.amp;
         }
       }
 

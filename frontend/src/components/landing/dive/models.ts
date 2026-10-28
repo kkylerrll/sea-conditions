@@ -8,13 +8,30 @@
 // 讓頁面在有沒有模型檔的情況下都能動——這不是理論上的 fallback，每個 glb
 // 壓縮前都曾經是這樣先跑通的。
 //
-// scale 是從每個原始 GLB 的 bbox 反推的：Sketchfab 模型各自帶著來源 DCC
-// 軟體的原始單位（有些是公尺，有些明顯是公分甚至更怪的尺度），量出的數字
-// 記在下面每一筆註解裡，不是憑感覺調的——所以要是使用者換了同名但不同來源
-// 的模型，這個 scale 八成要重算，不能直接套用。
+// round 20 回饋：「魚的大小比例很奇怪」——舊版每個模型各自手調一個 scale
+// （海龜 1.7、鮪魚 0.6、鎚頭鯊 0.105……），每次換模型就憑眼睛重猜一次，結果
+// 海龜比潛水員大好幾倍、小丑魚跟潛水員上半身一樣大、鎚頭鯊反而比蝴蝶魚小。
+// 現在改成登記「真實體長」（bodyLengthM，公尺），engine.ts 載入時量模型自己的
+// bbox，反推出「體長 × UNITS_PER_M」需要的縮放值——Sketchfab 模型各自帶著來源
+// DCC 軟體的原始單位（公尺、公分、更怪的尺度都有）也不用再管，換同名不同來源
+// 的模型時不必重算任何數字。
 
 import * as THREE from "three";
 import type { ProceduralSwim } from "./swim";
+
+/**
+ * 世界單位／公尺。以潛水員當尺：潛水員模型 bbox 高約 1.98 × scale 0.55 ≈ 1.09
+ * 單位，對應真人約 1.8 m，所以 1 m ≈ 0.6 單位。所有生物的大小都從這個比例算，
+ * 跟潛水員之間的比例才會是真的。
+ */
+export const UNITS_PER_M = (1.98 * 0.55) / 1.8;
+
+/**
+ * 小型礁魚的「看得清楚」放大倍率。真實比例下 11 cm 的小丑魚在鏡頭 3~7 公尺外
+ * 只剩十幾個像素，所以允許最多 1.6 倍——是明確寫出來的可讀性折衷，不是把體長
+ * 偷偷灌水；只套用在有填 legibilityBoost 的小魚上。
+ */
+export const SMALL_FISH_LEGIBILITY_BOOST = 1.6;
 
 export type ModelName =
   | "diver"
@@ -93,8 +110,21 @@ export type ModelEntry = {
    * 長軸省略時由 geometry bbox 自動量；headSign 看不出來時用 ?diveDebug=<kind> 確認。
    */
   proceduralSwim?: ProceduralSwim;
-  /** 模型原始比例跟場景不一致時的統一縮放。 */
-  scale: number;
+  /**
+   * 真實體長（公尺）：沿 lengthAxis（省略時用 proceduralSwim.axis，再省略就取
+   * bbox 最長的水平軸）量。水母填的是鐘部直徑。engine.ts 的 applyLoadedModel()
+   * 用它跟 UNITS_PER_M 反推縮放值，見 computeModelScale()。
+   */
+  bodyLengthM: number;
+  /** 量體長用的軸；海龜展開的前鰭比體長寬，要指定 z，不能讓「最長水平軸」量到翼展。 */
+  lengthAxis?: "x" | "z";
+  /** 小型礁魚才填 true：套用 SMALL_FISH_LEGIBILITY_BOOST（見該常數的說明）。 */
+  legibilityBoost?: boolean;
+  /**
+   * 固定縮放（覆寫 bodyLengthM 的換算）。只有潛水員用——UNITS_PER_M 本身就是
+   * 從潛水員的 0.55 推出來的，潛水員不能再反過來用體長算自己。
+   */
+  fixedScale?: number;
   /** 模型原始朝向跟「往下潛、面朝畫面前方」不一致時的修正角度（弧度）。 */
   rotationOffset: THREE.Euler;
   /**
@@ -119,8 +149,9 @@ export const MODEL_REGISTRY: Record<ModelName, ModelEntry> = {
   diver: {
     path: "/landing/models/diver.glb",
     // 原始 bbox 高約 1.98 單位（接近真人比例），縮到 0.55 對齊先前用 placeholder
-    // 調好的攝影機框景，不用重調鏡頭。
-    scale: 0.55,
+    // 調好的攝影機框景，不用重調鏡頭。UNITS_PER_M 就是從這個數字推出來的。
+    fixedScale: 0.55,
+    bodyLengthM: 1.8,
     rotationOffset: new THREE.Euler(0, 0, 0),
     travelYaw: 0,
     depthM: 0,
@@ -138,7 +169,9 @@ export const MODEL_REGISTRY: Record<ModelName, ModelEntry> = {
   // 也沒有動畫，靠 proceduralSwim 擺尾。原始 bbox 長軸 z（-1~1，頭朝 +z 待截圖確認）。
   clownfish: {
     path: "/landing/models/clownfish.glb",
-    scale: 0.5,
+    // 眼斑雙鋸魚成魚約 11 cm。
+    bodyLengthM: 0.11,
+    legibilityBoost: true,
     rotationOffset: new THREE.Euler(0, 0, 0),
     travelYaw: 0,
     depthM: 8,
@@ -155,12 +188,17 @@ export const MODEL_REGISTRY: Record<ModelName, ModelEntry> = {
   // 靜態，原始 bbox 長軸 x（-1~1），靠 proceduralSwim。
   butterflyfish: {
     path: "/landing/models/butterflyfish.glb",
-    scale: 0.7,
+    // 三間火箭（copperband）成魚約 18 cm。
+    bodyLengthM: 0.18,
+    legibilityBoost: true,
     rotationOffset: new THREE.Euler(0, 0, 0),
     travelYaw: Math.PI / 2,
     depthM: 8,
     animationClip: "",
-    proceduralSwim: { axis: "x", headSign: -1, amp: 0.05, wavelength: 1.1, style: "subcarangiform" },
+    // round 20 回饋：「神仙魚很怪」——側扁的圓盤形魚套 subcarangiform（e0 0.25，接近
+    // 全身擺）會讓整片身體像果凍一樣晃。真的蝶魚身體幾乎是硬的，靠胸鰭划水＋尾柄
+    // 小幅擺動前進：改成只有後段彎的 carangiform，振幅壓到 0.025，頻率也放慢。
+    proceduralSwim: { axis: "x", headSign: -1, amp: 0.025, wavelength: 1.3, style: "carangiform", omega: 6 },
     credit: {
       title: "Copperband Butterflyfish",
       author: "Dsanchez13",
@@ -174,10 +212,10 @@ export const MODEL_REGISTRY: Record<ModelName, ModelEntry> = {
   // 亞洲鱸（金目鱸），台灣沿岸也有。沒有骨架也沒有動畫，靠 proceduralSwim 擺尾。
   // 原始 bbox：x -0.069~0.074、y 0~0.287、z -0.325~0.318（單位公尺，體長 0.64），
   // 長軸 z、頭朝 +z（引擎的 lookAt 讓模型 +Z 對準前進方向，所以 travelYaw=0）。
-  // scale 3.4 → 體長約 2.2 單位（跟 2.5× 礁魚、3.5 單位鯖魚同一個量級）。
+  // 尖吻鱸在礁區常見 60~120 cm，取 0.9 m（round 20 以前 scale 3.4 → 2.2 單位，等於 3.6 m）。
   barramundi: {
     path: "/landing/models/barramundi.glb",
-    scale: 3.4,
+    bodyLengthM: 0.9,
     rotationOffset: new THREE.Euler(0, 0, 0),
     travelYaw: 0,
     depthM: 8,
@@ -195,7 +233,8 @@ export const MODEL_REGISTRY: Record<ModelName, ModelEntry> = {
   tuna: {
     path: "/landing/models/tuna.glb",
     sanitizeSwim: true,
-    scale: 0.6,
+    // 黃鰭鮪成群洄游的個體約 1~1.8 m，取 1.6 m。
+    bodyLengthM: 1.6,
     rotationOffset: new THREE.Euler(0, 0, 0),
     travelYaw: 0,
     depthM: 20,
@@ -209,11 +248,13 @@ export const MODEL_REGISTRY: Record<ModelName, ModelEntry> = {
   },
   // round 19：alvaniLa 的 GREEN TURTLE (PENYU HIJAU)——掃描感的靜態綠蠵龜（原 56k 面，
   // simplify 後約 25k、1024 webp、specGloss 已轉 metalrough）。沒有骨架／動畫，長軸 z、
-  // 頭朝 +z（bbox z≈1.87、x≈2.0 是展開的前鰭），靠 flap 風格程序化拍鰭；scale 1.7 →
-  // 體長約 3.2 單位（跟舊版同量級）。
+  // 頭朝 +z（bbox z≈1.87、x≈2.0 是展開的前鰭），靠 flap 風格程序化拍鰭。綠蠵龜成龜
+  // 體長約 1.1 m——沿 z 量，不能讓最長水平軸量到 x 的翼展（round 20 以前 scale 1.7
+  // → 3.2 單位，等於 5 m 的海龜）。
   turtle: {
     path: "/landing/models/turtle.glb",
-    scale: 1.7,
+    bodyLengthM: 1.1,
+    lengthAxis: "z",
     rotationOffset: new THREE.Euler(0, 0, 0),
     travelYaw: 0,
     depthM: 35,
@@ -230,12 +271,12 @@ export const MODEL_REGISTRY: Record<ModelName, ModelEntry> = {
   // 骨架＋「Animation」迴圈）。烘焙動畫的根脊椎骨（IK_Back_Bone_01）旋轉 track 跟綁定
   // 姿勢差約 90°，不拿掉整隻鯊魚會翻成肚皮朝鏡頭，所以 stripRotationMatch 拿掉它；
   // 其餘骨頭的 translation 也清掉（sanitizeSwim）。長軸 x、頭在 -x，因此 travelYaw=π/2。
-  // 以 ?diveDebug=hammerhead 肉眼量體長：scale 0.105 約 4 單位（跟舊版同量級）。
+  // 路氏雙髻鯊成魚約 3 m。
   hammerhead: {
     path: "/landing/models/hammerhead.glb",
     sanitizeSwim: true,
     stripRotationMatch: ["IK_Back_Bone_01_jnt_"],
-    scale: 0.105,
+    bodyLengthM: 3.0,
     rotationOffset: new THREE.Euler(0, 0, 0),
     travelYaw: Math.PI / 2,
     depthM: 35,
@@ -249,11 +290,12 @@ export const MODEL_REGISTRY: Record<ModelName, ModelEntry> = {
   },
   // round 19：Poshel 的 Anglerfish（14k 面、掃描感皮膚＋利齒，貼圖 512 webp）。單一 mesh＋
   // morph 權重動畫（沒有骨架），誘餌是幾何的一部分——engine.ts attachAnglerfishLure()
-  // 會在最高頂點（誘餌球泡）掛一顆 emissive 小球。scale 0.2 → 體長約 3.5 單位。
+  // 會在最高頂點（誘餌球泡）掛一顆 emissive 小球。體長取 0.6 m（大型深海鮟鱇的
+  // 上限；round 20 以前 scale 0.2 → 3.5 單位，等於 5.8 m）。
   // 模型朝向：嘴朝 +x 時 travelYaw=π/2（沿用舊模型的結論，截圖確認嘴朝前進方向）。
   anglerfish: {
     path: "/landing/models/anglerfish.glb",
-    scale: 0.2,
+    bodyLengthM: 0.6,
     rotationOffset: new THREE.Euler(0, 0, 0),
     travelYaw: Math.PI / 2,
     depthM: 1000,
@@ -267,10 +309,11 @@ export const MODEL_REGISTRY: Record<ModelName, ModelEntry> = {
   },
   // round 19：n- 的 Simple Moon Jellyfish (Baked Animation)（Aurelia，台灣近海常見；5.4k 面）。
   // 原檔場景裡有一個 84 面的 Cube_0 道具（縮圖上飄的方塊）——已用 gltf-transform 腳本
-  // 刪掉再 optimize，glb 裡沒有方塊。scale 0.2 → 鐘部直徑約 0.65 單位。
+  // 刪掉再 optimize，glb 裡沒有方塊。海月水母鐘部直徑約 35 cm（bodyLengthM 填的是
+  // 鐘部直徑，最長水平軸量到的就是鐘緣）。
   jellyfish: {
     path: "/landing/models/jellyfish.glb",
-    scale: 0.2,
+    bodyLengthM: 0.35,
     rotationOffset: new THREE.Euler(0, 0, 0),
     travelYaw: 0,
     depthM: 1000,
@@ -313,7 +356,7 @@ export const DEBUG_ALL_ROWS: DebugAllRow[] = ALL_MODELS.map((kind, i) => ({
 // 只列出需要這個效果的物種；水母的「鐘部」有自己專門、會脈動的生物發光
 // 處理（見下面 JELLY_GLOW_* 常數跟 engine.ts applyLoadedModel 的 jellyfish
 // 分支),不套用這份通用的深度淡出下限,不然兩種效果的顏色會打架。
-export const CREATURE_RIM_FLOOR: Partial<Record<ModelName, { color: number; max: number }>> = {
+export const CREATURE_RIM_FLOOR: Partial<Record<ModelName, { color: number; max: number; useSkinMap?: boolean }>> = {
   // 四種珊瑚礁魚共用同一組數值（以前單一 reefSchool 項目就是這組）——
   // engine.ts 的 applyLoadedModel() 每次只處理「這個 kind 自己的那個
   // mesh」，不會像拆分之前那樣整棵共用骨架一起被同一次呼叫打上標籤，
@@ -328,13 +371,21 @@ export const CREATURE_RIM_FLOOR: Partial<Record<ModelName, { color: number; max:
   // 「誘餌」子網格可以單獨調材質——見 engine.ts attachAnglerfishLure() 的
   // 說明),所以牠的「身體要有一點暗淡自體發光」直接沿用這份通用機制,顏色
   // 用原本就在用的生物發光綠,不用另外寫一套。
-  anglerfish: { color: 0x3fd98a, max: 0.35 },
+  // round 20 回饋：鮟鱇魚在畫面上變成「一整塊螢光綠」——0x3fd98a × 0.35 的平塗
+  // emissive 沒有貼圖，直接把皮膚、利齒全部蓋掉。改成淡青灰，並且讓 emissive 走
+  // 皮膚貼圖（見 engine.ts applyLoadedModel 的 emissiveMap）：發光乘上紋理，亮的
+  // 是皮膚本身的花紋，不是一塊色板；真正亮的只留誘餌。
+  anglerfish: { color: 0x9fcfc8, max: 0.55, useSkinMap: true },
 };
 
 // 水母鐘部的生物發光脈動：base 是中心亮度,amp 是脈動幅度（上下各 amp）,
 // speed 是脈動角速度（rad/s）。跟 CREATURE_RIM_FLOOR 分開——水母的發光是
 // 牠的主要外觀語言，不是「深度越深才浮現」的底線,所以用固定幅度脈動,
 // 不跟 environmentDarkness 掛鉤（水母本來就只出現在最深的 ABYSS_RANGE）。
-export const JELLY_GLOW_BASE = 2.0;
-export const JELLY_GLOW_AMP = 0.5;
+// round 20：這組數值現在是「輻管」（Canal*）的亮度；鐘體乘上 JELLY_BELL_GLOW_RATIO，只是
+// 一層很淡的冷光（見 engine.ts applyLoadedModel 的 jellyfish 分支）。脈動幅度加大，收縮時
+// 亮、放鬆時暗，才看得出「一縮一放」。
+export const JELLY_GLOW_BASE = 0.9;
+export const JELLY_GLOW_AMP = 0.35;
+export const JELLY_BELL_GLOW_RATIO = 0.35;
 export const JELLY_GLOW_SPEED = 1.1;

@@ -9,6 +9,8 @@ export const metadata: Metadata = {
   title: "海況去不去 — 台灣潛點海況",
   description: "查台灣各潛點與衝浪點今天適不適合下水，把氣象數據畫成看得懂的海況圖。",
   manifest: "/manifest.webmanifest",
+  // 沒宣告 icon 時瀏覽器會自己去抓 /favicon.ico（不存在 → 每頁一個 404）。
+  icons: { icon: "/icon.svg" },
   appleWebApp: { capable: true, title: "海況去不去", statusBarStyle: "default" },
 };
 
