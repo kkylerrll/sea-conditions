@@ -45,13 +45,16 @@ export function addDiverRimShader(material: THREE.MeshStandardMaterial | THREE.M
         "#include <common>",
         "#include <common>\nuniform float uRimStrength;\nuniform vec3 uRimColor;\nvarying vec3 vRimViewPosition;",
       )
+      // round 21：three r154 起這個 chunk 改名成 <opaque_fragment>，舊名 <output_fragment> 已經不存在——
+      // 原本的 replace 比對不到、靜悄悄什麼都沒做，潛水員的輪廓光其實從升級 three 之後就沒生效過，
+      // 只是以前深海有平光下限撐著看不出來。新舊兩個名字都處理。
       .replace(
-        "#include <output_fragment>",
-        `
+        /#include <(opaque|output)_fragment>/,
+        (inc) => `
         float rimDot = 1.0 - saturate( dot( normalize( vRimViewPosition ), normal ) );
         float rimFactor = pow( rimDot, 2.2 );
         outgoingLight += uRimColor * ( uRimStrength * rimFactor );
-        #include <output_fragment>
+        ${inc}
         `,
       );
 

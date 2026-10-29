@@ -69,13 +69,22 @@ void main() {
 }
 `;
 
-const TENTACLE_POINTS = 28;
-
+// round 21 第二輪回饋：「觸手像氣球的繩子」——原本兩條細線拖到 3.2 倍體長、粗細亮度從頭到尾
+// 一樣。球櫛水母的觸手實際上是：從身體兩側的觸手鞘伸出、長度跟身體差不多、往末端漸細漸淡，
+// 上面一路長著細短的側絲（tentilla），末端會捲起來；而且常常整條縮回鞘裡。所以：
+//   - 只有一半的個體伸出觸手（其他的縮著）
+//   - 主觸手長 1.1~1.5 倍體長，頂點色沿長度淡出（加法混合下顏色變暗＝變透明）
+//   - 每條主觸手掛 TENTILLA 條側絲（LineSegments），一樣往外淡出，跟著主觸手擺動
+const TENTACLE_POINTS = 18;
+const TENTILLA = 6;
+const TENT_COLOR = new THREE.Color(0xbfe6ff);
 type Comb = {
   group: THREE.Group;
   mat: THREE.ShaderMaterial;
   tentacles: THREE.Line[];
+  tentilla: THREE.LineSegments[];
   tentMat: THREE.LineBasicMaterial;
+  tentLen: number;
   fx: number;
   dist: number;
   baseY: number;
@@ -137,20 +146,46 @@ export class CombJellies {
       const body = new THREE.Mesh(geo, mat);
       g.add(body);
       const tentMat = new THREE.LineBasicMaterial({
-        color: 0xbfe6ff,
+        vertexColors: true,
         transparent: true,
         opacity: 0,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       });
       const tentacles: THREE.Line[] = [];
-      for (let k = 0; k < 2; k++) {
-        const tg = new THREE.BufferGeometry();
-        tg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(TENTACLE_POINTS * 3), 3));
-        const line = new THREE.Line(tg, tentMat);
-        line.frustumCulled = false;
-        g.add(line);
-        tentacles.push(line);
+      const tentilla: THREE.LineSegments[] = [];
+      // 一半的個體伸出觸手（第 0、2、4… 隻）；最後一章留下的第 0 隻有、第 1 隻沒有
+      if (i % 2 === 0) {
+        for (let k = 0; k < 2; k++) {
+          const tg = new THREE.BufferGeometry();
+          tg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(TENTACLE_POINTS * 3), 3));
+          const tc = new Float32Array(TENTACLE_POINTS * 3);
+          for (let j = 0; j < TENTACLE_POINTS; j++) {
+            const f = Math.pow(1 - j / (TENTACLE_POINTS - 1), 1.6);
+            tc[j * 3] = TENT_COLOR.r * f;
+            tc[j * 3 + 1] = TENT_COLOR.g * f;
+            tc[j * 3 + 2] = TENT_COLOR.b * f;
+          }
+          tg.setAttribute("color", new THREE.BufferAttribute(tc, 3));
+          const line = new THREE.Line(tg, tentMat);
+          line.frustumCulled = false;
+          g.add(line);
+          tentacles.push(line);
+          // 側絲：每條 2 個頂點（根部接在主觸手上、末端往外下方），根部亮、末端淡
+          const sg = new THREE.BufferGeometry();
+          sg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(TENTILLA * 2 * 3), 3));
+          const sc = new Float32Array(TENTILLA * 2 * 3);
+          for (let j = 0; j < TENTILLA; j++) {
+            const along = 0.2 + (j / TENTILLA) * 0.75;
+            const f = Math.pow(1 - along, 1.6) * 0.8;
+            sc.set([TENT_COLOR.r * f, TENT_COLOR.g * f, TENT_COLOR.b * f, 0, 0, 0], j * 6);
+          }
+          sg.setAttribute("color", new THREE.BufferAttribute(sc, 3));
+          const seg = new THREE.LineSegments(sg, tentMat);
+          seg.frustumCulled = false;
+          g.add(seg);
+          tentilla.push(seg);
+        }
       }
       // 體長 15~22 cm（球櫛水母的真實尺寸）× 深淵放大倍率
       const size = (0.15 + Math.random() * 0.07) * unitsPerM * boost;
@@ -160,7 +195,9 @@ export class CombJellies {
         group: g,
         mat,
         tentacles,
+        tentilla,
         tentMat,
+        tentLen: 1.1 + Math.random() * 0.4,
         // 桌機只用右側（標題字到約 44% 寬），窄螢幕文字置中可以滿版
         fx: narrow ? 0.08 + Math.random() * 0.84 : 0.5 + Math.random() * 0.45,
         dist: 2.8 + Math.random() * 3.7,
@@ -252,19 +289,40 @@ export class CombJellies {
       u.uFlashCos.value = Math.cos(flash.angle);
       u.uFlashK.value = flash.k;
 
-      // 觸手：從身體兩側靠口端的觸手鞘伸出，往下拖、帶一點側擺，越往末端擺幅越大
-      c.tentMat.opacity = 0.32 * fade;
-      for (let k = 0; k < 2; k++) {
-        const side = k === 0 ? -1 : 1;
-        const arr = (c.tentacles[k].geometry.getAttribute("position") as THREE.BufferAttribute).array as Float32Array;
-        for (let i = 0; i < TENTACLE_POINTS; i++) {
-          const s = i / (TENTACLE_POINTS - 1);
-          const sway = Math.sin(time * 1.1 - s * 5 + c.phase + k * 1.7) * 0.35 * s;
-          arr[i * 3] = side * (0.3 + s * 0.5) + sway;
-          arr[i * 3 + 1] = -0.15 - s * 3.2;
-          arr[i * 3 + 2] = Math.cos(time * 0.9 - s * 4 + c.phase + k) * 0.25 * s;
+      // 觸手：從身體兩側中段偏口端的觸手鞘伸出，往下拖、末端捲起，側絲跟著主觸手擺
+      if (c.tentacles.length) {
+        c.tentMat.opacity = 0.55 * fade;
+        for (let k = 0; k < 2; k++) {
+          const side = k === 0 ? -1 : 1;
+          const arr = (c.tentacles[k].geometry.getAttribute("position") as THREE.BufferAttribute).array as Float32Array;
+          for (let j = 0; j < TENTACLE_POINTS; j++) {
+            const s = j / (TENTACLE_POINTS - 1);
+            // 末端捲：越往末端彎得越多（角度隨 s² 增加），加上緩慢擺動
+            const curl = s * s * 1.2 + Math.sin(time * 0.8 + c.phase + k * 1.9) * 0.35 * s;
+            const r = c.tentLen * s;
+            arr[j * 3] = side * (0.34 + Math.sin(curl) * r * 0.45);
+            arr[j * 3 + 1] = -0.12 - Math.cos(curl) * r * 0.9;
+            arr[j * 3 + 2] = Math.sin(time * 0.7 - s * 3 + c.phase + k) * 0.18 * s;
+          }
+          c.tentacles[k].geometry.getAttribute("position").needsUpdate = true;
+          // 側絲：沿主觸手均勻分布，往外、往下斜伸出，長度約 0.1~0.16 體長，輕輕擺動
+          const sarr = (c.tentilla[k].geometry.getAttribute("position") as THREE.BufferAttribute).array as Float32Array;
+          for (let j = 0; j < TENTILLA; j++) {
+            const along = 0.2 + (j / TENTILLA) * 0.75;
+            const fj = along * (TENTACLE_POINTS - 1);
+            const j0 = Math.floor(fj);
+            const j1 = Math.min(j0 + 1, TENTACLE_POINTS - 1);
+            const tt = fj - j0;
+            const bx = arr[j0 * 3] + (arr[j1 * 3] - arr[j0 * 3]) * tt;
+            const by = arr[j0 * 3 + 1] + (arr[j1 * 3 + 1] - arr[j0 * 3 + 1]) * tt;
+            const bz = arr[j0 * 3 + 2] + (arr[j1 * 3 + 2] - arr[j0 * 3 + 2]) * tt;
+            const len = 0.1 + 0.06 * Math.sin(j * 2.3 + c.phase);
+            const wob = Math.sin(time * 1.3 + j * 1.7 + c.phase) * 0.35;
+            const alt = j % 2 === 0 ? 1 : -1;
+            sarr.set([bx, by, bz, bx + side * alt * Math.cos(0.6 + wob) * len, by - Math.sin(0.6 + wob) * len, bz + alt * 0.04], j * 6);
+          }
+          c.tentilla[k].geometry.getAttribute("position").needsUpdate = true;
         }
-        c.tentacles[k].geometry.getAttribute("position").needsUpdate = true;
       }
     }
   }

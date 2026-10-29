@@ -48,6 +48,7 @@ import { canBuildOcean, OceanWorld } from "./ocean/oceanWorld";
 import { MarineSnow } from "./marineSnow";
 import { CombJellies, type ScreenExclusion } from "./combJellies";
 import { LanternfishSchool } from "./lanternfish";
+import { applyAbyssHide, createAbyssHideUniforms } from "./abyssHide";
 import {
   MODEL_REGISTRY,
   ALL_MODELS,
@@ -118,7 +119,9 @@ const DEBUG_ALL_SPEED = 0.6;
 // environmentDarkness(progress)）× 這個常數——淺水 depthFrac≈0 時完全是 0，
 // 只有深海才慢慢浮現，見 update() 最後怎麼把這個值寫進每顆材質的
 // userData.rimUniforms。
-const DIVER_RIM_MAX_STRENGTH = 1.3;
+// round 21：1.3 是在輪廓光 shader 其實沒生效（placeholders.ts 的 chunk 名稱過期）時設的數字，
+// 修好之後 1.3 會把潛水員照成泛白的 X 光片；0.55 讓防寒衣、氣瓶、蛙鞋只帶一圈冷色邊。
+const DIVER_RIM_MAX_STRENGTH = 0.55;
 
 // 每種生物「大概會被捲到」的捲動進度區間（不是深度區間！）。刻意重疊
 // （珊瑚礁魚跟鯖魚重疊、鯖魚跟海龜/鎚頭鯊重疊、深海兩種互相重疊也跟
@@ -791,6 +794,10 @@ export class DiveEngine {
   private combJellies: CombJellies;
   // round 21：暮光帶（200~600m）的燈籠魚群（見 lanternfish.ts）。
   private lanternfish: LanternfishSchool;
+  // round 21 第二輪：深海裡沒被照到的生物融進背景（見 abyssHide.ts），所有生物材質共用這組 uniforms。
+  private abyssHide = createAbyssHideUniforms();
+  private ahTmpColor = new THREE.Color();
+  private ahTmpVec2 = new THREE.Vector2();
   // ⑤：最後一章 CTA 的畫面排除區（0~1 螢幕比例），null＝不排除。
   private ctaExclusion: ScreenExclusion = null;
   private snowFlash = { pos: new THREE.Vector3(), target: new THREE.Vector3(), angle: FLASH_ANGLE, k: 0 };
@@ -935,6 +942,7 @@ export class DiveEngine {
     this.scene.add(this.combJellies.group);
     this.lanternfish = new LanternfishSchool(this.mobile ? 20 : 40, UNITS_PER_M, LANTERNFISH_BOOST, this.narrowLayout, this.renderer.getPixelRatio());
     this.scene.add(this.lanternfish.group);
+    applyAbyssHide(this.lanternfish.group, this.abyssHide);
     window.addEventListener("pointermove", this.handlePointerMove, { passive: true });
     window.addEventListener("pointerdown", this.handlePointerMove, { passive: true });
 
@@ -1385,6 +1393,8 @@ export class DiveEngine {
         const tagged = collectTaggedMaterials(instance);
         target.rimMaterials = tagged.rimFloor;
         target.bioGlowMaterials = tagged.bioGlow;
+        // 水母（淺水、半透明）不需要；其他生物在深海沒被照到時融進背景
+        if (name !== "jellyfish") applyAbyssHide(instance, this.abyssHide);
       }
     }
     // 潛水員的實際材質（上面迴圈換掉的 mesh）到這裡才真的接上 this.diver.root
@@ -1550,6 +1560,8 @@ export class DiveEngine {
       new THREE.SphereGeometry(1, 8, 8),
       new THREE.MeshStandardMaterial({ color: 0xbfffe0, emissive: 0x6dffb8, emissiveIntensity: 2.2, roughness: 0.4 }),
     );
+    // 誘餌是生物發光，深海隱身（abyssHide.ts）不能把它混掉
+    (lure.material as THREE.Material).userData.noAbyssHide = true;
     // round 20：0.07 是給舊版 3.5 單位長的鮟鱇魚調的；現在的魚約 1.2 單位，誘餌球半徑取
     // 約體長的 3%，外面再套一圈加法混合的光暈 sprite（見下面），在全黑的深淵裡才「亮得起來」。
     const desiredWorldRadius = 0.035;
@@ -2321,6 +2333,17 @@ export class DiveEngine {
     this.snowFlash.target.copy(this.flashLight.target.position);
     this.snowFlash.k = this.flashLight.visible ? this.flashLight.intensity / FLASH_MAX_INTENSITY : 0;
     this.snow.update(t, this.camera, depthM, Math.abs(velocity), this.snowFlash);
+    // 深海隱身的背景色：跟海面模組畫的 waterBg 用同一組上下兩色（sRGB）跟同一條公式
+    {
+      const ah = this.abyssHide;
+      ah.uAhHide.value = abyss;
+      ah.uAhTopS.value.copy(this.ahTmpColor.copy(gradTop).convertLinearToSRGB());
+      ah.uAhBotS.value.copy(this.ahTmpColor.copy(gradBottom).convertLinearToSRGB());
+      ah.uAhCamRot.value.setFromMatrix4(this.camera.matrixWorld);
+      ah.uAhTanHalf.value = Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2);
+      ah.uAhAspect.value = this.camera.aspect;
+      ah.uAhViewport.value.copy(this.renderer.getDrawingBufferSize(this.ahTmpVec2));
+    }
     // ⑤ 最後一章：850m 起生物減量，並避開標題／CTA 的螢幕範圍
     this.finale = smoothstep((depthM - FINALE_START_M) / (FINALE_END_M - FINALE_START_M));
     this.updateCtaExclusion();
