@@ -76,9 +76,10 @@ export default function HomePage() {
           </Chapter>
 
           <Chapter at={4}>
-            <h2 className="chapter-title">下水前，先看今天的海況</h2>
-            <p className="chapter-body">選一個下水點，潛水和衝浪的燈號會分開告訴你答案。</p>
-            <Link href="/explore" className="chapter-cta chapter-cta-light">
+            {/* data-dive-exclude：3D 場景在最後一章會讓生物／海雪避開這些元素的範圍（見 engine.ts updateCtaExclusion） */}
+            <h2 className="chapter-title" data-dive-exclude>下水前，先看今天的海況</h2>
+            <p className="chapter-body" data-dive-exclude>選一個下水點，潛水和衝浪的燈號會分開告訴你答案。</p>
+            <Link href="/explore" className="chapter-cta chapter-cta-light" data-dive-exclude>
               開始使用
             </Link>
           </Chapter>

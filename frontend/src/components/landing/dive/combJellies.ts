@@ -174,6 +174,7 @@ export class CombJellies {
     depthM: number,
     flash: { pos: THREE.Vector3; target: THREE.Vector3; angle: number; k: number },
     exclusion: ScreenExclusion,
+    finale: number,
   ) {
     // 300m 開始出現，到底（1000m）都在
     const fadeIn = THREE.MathUtils.smoothstep(depthM, 280, 330);
@@ -181,7 +182,8 @@ export class CombJellies {
     if (!this.group.visible) return;
     this.dir.copy(flash.target).sub(flash.pos).normalize();
     const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
-    for (const c of this.combs) {
+    for (let i = 0; i < this.combs.length; i++) {
+      const c = this.combs[i];
       const h = 2 * c.dist * tanHalf;
       const w = h * camera.aspect;
       const boxH = h * 1.35;
@@ -207,7 +209,9 @@ export class CombJellies {
         const inY = THREE.MathUtils.smoothstep(sy, exclusion.y0 - pad, exclusion.y0) * (1 - THREE.MathUtils.smoothstep(sy, exclusion.y1, exclusion.y1 + pad));
         excl = 1 - inX * inY;
       }
-      const fade = fadeIn * edge * excl;
+      // ⑤ 最後一章只留前 2 隻
+      const keep = i < 2 ? 1 : 1 - finale;
+      const fade = fadeIn * edge * excl * keep;
       const u = c.mat.uniforms;
       u.uTime.value = time;
       u.uFade.value = fade;

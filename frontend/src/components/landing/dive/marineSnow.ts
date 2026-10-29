@@ -24,6 +24,8 @@ uniform vec3 uFlashDir;
 uniform float uFlashCos;
 uniform float uFlashK;
 uniform float uDensity;
+uniform vec4 uExcl;
+uniform float uExclK;
 void main() {
   // 自身漂移：很慢的亂流，每顆相位不同
   vec3 p = position;
@@ -54,6 +56,11 @@ void main() {
   vAlpha *= 1.0 - big * 0.45;
   gl_PointSize = on * uPx * size * (900.0 / max(dist, 0.3)) * (1.0 + (1.0 - near) * 1.5);
   gl_Position = projectionMatrix * mv;
+  // ⑤ 最後一章：標題／CTA 的螢幕範圍內海雪變淡（不完全拿掉，邊緣柔和過渡）
+  vec2 sp = vec2(gl_Position.x / gl_Position.w * 0.5 + 0.5, 0.5 - gl_Position.y / gl_Position.w * 0.5);
+  float inX = smoothstep(uExcl.x - 0.04, uExcl.x, sp.x) * (1.0 - smoothstep(uExcl.z, uExcl.z + 0.04, sp.x));
+  float inY = smoothstep(uExcl.y - 0.04, uExcl.y, sp.y) * (1.0 - smoothstep(uExcl.w, uExcl.w + 0.04, sp.y));
+  vAlpha *= 1.0 - uExclK * inX * inY * 0.85;
 }
 `;
 
@@ -109,6 +116,8 @@ export class MarineSnow {
         uFlashK: { value: 0 },
         uDensity: { value: 0 },
         uBright: { value: 0 },
+        uExcl: { value: new THREE.Vector4(0, 0, 0, 0) },
+        uExclK: { value: 0 },
       },
     });
     this.points = new THREE.Points(geo, this.mat);
@@ -143,6 +152,17 @@ export class MarineSnow {
     u.uFlashDir.value.copy(this.dirTmp);
     u.uFlashCos.value = Math.cos(flash.angle);
     u.uFlashK.value = flash.k;
+  }
+
+  /** ⑤ 螢幕比例（0~1）的排除矩形；k＝0 不排除、1 完全套用。 */
+  setExclusion(rect: { x0: number; y0: number; x1: number; y1: number } | null, k: number) {
+    const u = this.mat.uniforms;
+    if (!rect) {
+      u.uExclK.value = 0;
+      return;
+    }
+    (u.uExcl.value as THREE.Vector4).set(rect.x0, rect.y0, rect.x1, rect.y1);
+    u.uExclK.value = k;
   }
 
   dispose() {

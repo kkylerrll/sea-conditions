@@ -247,6 +247,9 @@ const ABYSS_RIM_CUT = 0.92;
 // 櫛水母放大倍率：深海的大型球櫛水母約 15~22 cm，照真實比例在畫面上只有 30 px 左右，
 // 彩虹櫛帶糊成一條線——放大 3 倍（約 0.5~0.7 m 的視覺尺寸），牠是深淵的主角，要看得清楚。
 const COMB_JELLY_BOOST = 3;
+// ⑤ 最後一章（CTA「開始使用」）的範圍：這段深度內生物逐漸只剩 1 隻鮟鱇魚＋2 隻櫛水母。
+const FINALE_START_M = 850;
+const FINALE_END_M = 970;
 // 燈籠魚體長 7~12 cm，照真實比例在畫面上只有 10 px——放大 2.5 倍，讀得出「一群小魚」。
 const LANTERNFISH_BOOST = 2.5;
 // 潛水員身上的近距離點光源（見 diverLamp）：照亮範圍約 2.5 單位（≈4 公尺）。
@@ -621,6 +624,8 @@ type MotionKind = "straight" | "school" | "drift";
 
 type Creature = {
   root: THREE.Object3D;
+  // ⑤ 最後一章只留這一隻（離鏡頭最遠的鮟鱇魚），其他的淡出，讓 CTA 成為畫面焦點。
+  finaleKeep?: boolean;
   mixer: THREE.AnimationMixer | null;
   kind: ModelName;
   isPlaceholder: boolean;
@@ -792,6 +797,11 @@ export class DiveEngine {
   // 0＝150m 以淺（平光照常）、1＝300m 以深（全黑），每幀在 update() 算一次，
   // updateCreatures 用它壓 rim floor、海雪用它調亮度。
   private abyssFactor = 0;
+  // ⑤ 最後一章（約 850m 以下）0→1：生物減量、避開 CTA。
+  private finale = 0;
+  private exclFrame = 0;
+  private exclTmp = new THREE.Vector3();
+  private exclRect = { x0: 0, y0: 0, x1: 0, y1: 0 };
   private flashRay = new THREE.Raycaster();
   private flashTmp = new THREE.Vector3();
 
@@ -1409,8 +1419,52 @@ export class DiveEngine {
   }
 
   /** 鮟鱇魚在桌機車道左端（文字欄旁）1.2 單位內淡出；fromLeft＝離車道左端的距離。 */
+  /** ⑤ 每 6 幀量一次標了 data-dive-exclude 的 DOM 元素，合併成一個螢幕比例（0~1）的矩形。
+      只在最後一章（finale > 0）才啟用，其他章節不影響生物。 */
+  private updateCtaExclusion() {
+    if (this.finale <= 0.001) {
+      this.ctaExclusion = null;
+      return;
+    }
+    if (this.exclFrame++ % 6 === 0) {
+      const els = document.querySelectorAll<HTMLElement>("[data-dive-exclude]");
+      const cr = this.canvas.getBoundingClientRect();
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      els.forEach((el) => {
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) return;
+        x0 = Math.min(x0, r.left);
+        y0 = Math.min(y0, r.top);
+        x1 = Math.max(x1, r.right);
+        y1 = Math.max(y1, r.bottom);
+      });
+      if (!Number.isFinite(x0) || cr.width === 0) {
+        this.ctaExclusion = null;
+        return;
+      }
+      this.exclRect.x0 = (x0 - cr.left) / cr.width;
+      this.exclRect.y0 = (y0 - cr.top) / cr.height;
+      this.exclRect.x1 = (x1 - cr.left) / cr.width;
+      this.exclRect.y1 = (y1 - cr.top) / cr.height;
+    }
+    this.ctaExclusion = this.exclRect;
+  }
+
   private anglerEdgeFade(c: Creature, fromLeft: number) {
-    const alpha = this.narrowLayout ? 1 : THREE.MathUtils.smoothstep(fromLeft, 0, 1.2);
+    const edge = this.narrowLayout ? 1 : THREE.MathUtils.smoothstep(fromLeft, 0, 1.2);
+    // ⑤ 最後一章：只留 finaleKeep 那一隻，其他慢慢淡出
+    let alpha = edge * (c.finaleKeep ? 1 : 1 - this.finale);
+    // ⑤ 留下的那隻也不能壓在標題／CTA 上（手機版文字置中、滿版，最容易撞到）：
+    // 投影到螢幕，進入排除區（上下多留 10%）就淡出
+    const ex = this.ctaExclusion;
+    if (ex && alpha > 0.01) {
+      const p = this.exclTmp.copy(c.root.position).project(this.camera);
+      const sx = (p.x + 1) / 2;
+      const sy = (1 - p.y) / 2;
+      const inX = THREE.MathUtils.smoothstep(sx, ex.x0 - 0.08, ex.x0) * (1 - THREE.MathUtils.smoothstep(sx, ex.x1, ex.x1 + 0.08));
+      const inY = THREE.MathUtils.smoothstep(sy, ex.y0 - 0.14, ex.y0 - 0.04) * (1 - THREE.MathUtils.smoothstep(sy, ex.y1 + 0.04, ex.y1 + 0.14));
+      alpha *= 1 - this.finale * inX * inY;
+    }
     c.root.visible = c.root.visible && alpha > 0.01;
     c.root.traverse((o) => {
       if (!(o instanceof THREE.Mesh || o instanceof THREE.Sprite)) return;
@@ -1647,6 +1701,8 @@ export class DiveEngine {
     // round 20 第二輪：體長改成 1.0 m × 深淵放大（1.2 單位），車道再收到 -1.5~0.8（離鏡頭
     // 5.2~7.5，潛水員在 5）——桌機畫面上約 140~210 px，仍然不會比潛水員更貼近鏡頭。
     const angler = this.spawnInRange("anglerfish", "straight", ANGLER_RANGE, this.mobile ? 3 : 4, [-1.5, 0.8]);
+    // ⑤ 最後一章只留離鏡頭最遠的那一隻（遠處一點誘餌光），其他淡出。
+    if (angler.length) angler.reduce((a, b) => (b.laneZ < a.laneZ ? b : a)).finaleKeep = true;
     for (const c of angler) {
       // round 11：鮟鱇魚是伏擊型掠食者,真實行為是「幾乎不動、原地等」,
       // 不是巡游——glideSpeed 降到接近 0,只留一點漂移感。放慢不影響
@@ -2208,7 +2264,11 @@ export class DiveEngine {
     this.snowFlash.target.copy(this.flashLight.target.position);
     this.snowFlash.k = this.flashLight.visible ? this.flashLight.intensity / FLASH_MAX_INTENSITY : 0;
     this.snow.update(t, this.camera, depthM, Math.abs(velocity), this.snowFlash);
-    this.combJellies.update(t, this.camera, depthM, this.snowFlash, this.ctaExclusion);
+    // ⑤ 最後一章：850m 起生物減量，並避開標題／CTA 的螢幕範圍
+    this.finale = smoothstep((depthM - FINALE_START_M) / (FINALE_END_M - FINALE_START_M));
+    this.updateCtaExclusion();
+    this.snow.setExclusion(this.ctaExclusion, this.finale);
+    this.combJellies.update(t, this.camera, depthM, this.snowFlash, this.ctaExclusion, this.finale);
     this.lanternfish.update(t, dt, this.camera, depthM);
 
     // ---- 海面：推進 FFT、更新水線與天空 uniforms（要在鏡頭矩陣算好之後） ----
