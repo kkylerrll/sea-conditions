@@ -79,7 +79,7 @@ const DEPTH_GRADIENT_STOPS: { depthM: number; top: THREE.Color; bottom: THREE.Co
   { depthM: 20, top: new THREE.Color(0x178bcc), bottom: new THREE.Color(0x0a5f9e) },
   { depthM: 40, top: new THREE.Color(0x0d5f9e), bottom: new THREE.Color(0x063a6b) },
   { depthM: 100, top: new THREE.Color(0x073a66), bottom: new THREE.Color(0x03213f) },
-  { depthM: 300, top: new THREE.Color(0x031a33), bottom: new THREE.Color(0x020d1c) },
+  { depthM: 300, top: new THREE.Color(0x021327), bottom: new THREE.Color(0x010a16) },
   { depthM: 1000, top: new THREE.Color(0x020812), bottom: new THREE.Color(0x010307) },
 ];
 
@@ -233,6 +233,15 @@ const FLASH_DISTANCE = 16;
 const FLASH_DARK_START = 0.35;
 const FLASH_DARK_END = 0.75;
 const FLASH_COLOR = 0xfff1d6;
+// round 21：深海全黑。平光在這兩個深度之間淡到 ABYSS_FLAT_LIGHT；生物的 rim floor
+// 也乘上 (1 - abyss × ABYSS_RIM_CUT)，沒被手電筒照到就只剩極淡的剪影。
+const ABYSS_LIGHT_START_M = 150;
+const ABYSS_LIGHT_END_M = 300;
+const ABYSS_FLAT_LIGHT = 0.015;
+const ABYSS_RIM_CUT = 0.92;
+// 潛水員身上的近距離點光源（見 diverLamp）：照亮範圍約 2.5 單位（≈4 公尺）。
+const DIVER_LAMP_INTENSITY = 2.2;
+const DIVER_LAMP_DISTANCE = 4;
 // 游標對應的目標點落在這個 z 平面（生物車道大約 -1~-8 的中段）。
 const FLASH_PLANE_Z = -4;
 // 目標點指數平滑時間常數（秒）。
@@ -747,11 +756,18 @@ export class DiveEngine {
   // 在 FLASH_PLANE_Z 平面上的對應點，光源在鏡頭側；尚無輸入時停在潛水員附近漂移。
   // flashAim 是平滑後的目標點，flashPointerNdc 為 null 代表沒輸入。
   private flashLight: THREE.SpotLight;
+  // round 21：深海平光拿掉之後潛水員變成全黑剪影——身上掛一盞很弱、照得很近的
+  // 點光源（只照亮材質，沒有任何光束幾何，round 2 使用者拒絕過可見光柱），
+  // 只在 abyssFactor 上升時亮起，讓潛水員的裝備在全黑裡仍看得出形狀。
+  private diverLamp: THREE.PointLight;
   private flashAim = new THREE.Vector3(0, -2, FLASH_PLANE_Z);
   // 潛水員頭部骨頭（真模型載入後由 findDiverHeadBone 找到並快取）與暫存向量。
   private diverHeadBone: THREE.Object3D | null = null;
   private headTmp = new THREE.Vector3();
   private flashPointerNdc: THREE.Vector2 | null = null;
+  // 0＝150m 以淺（平光照常）、1＝300m 以深（全黑），每幀在 update() 算一次，
+  // updateCreatures 用它壓 rim floor、海雪用它調亮度。
+  private abyssFactor = 0;
   private flashRay = new THREE.Raycaster();
   private flashTmp = new THREE.Vector3();
 
@@ -868,6 +884,8 @@ export class DiveEngine {
     this.flashLight.castShadow = false;
     this.scene.add(this.flashLight);
     this.scene.add(this.flashLight.target);
+    this.diverLamp = new THREE.PointLight(0xdfeeff, 0, DIVER_LAMP_DISTANCE, 2);
+    this.scene.add(this.diverLamp);
     window.addEventListener("pointermove", this.handlePointerMove, { passive: true });
     window.addEventListener("pointerdown", this.handlePointerMove, { passive: true });
 
@@ -2128,8 +2146,14 @@ export class DiveEngine {
     // 淺水上限從 0.9/0.8 提高到 1.0/1.2（使用者要求「亮一點,魚的顏色要
     // 跳出來」),深海那端的下限（0.4／0.32）完全沒動——「保留既有的深海
     // 地板／輪廓光／發光邏輯」。
-    this.ambient.intensity = Math.max(0.4, 1.0 - depthFrac * 0.6);
-    this.hemi.intensity = Math.max(0.32, 1.2 - depthFrac * 0.88);
+    // round 21 回饋「深海像水族箱」：上面那組下限（0.4／0.32）讓 1000m 的生物
+    // 仍被均勻照亮。真的深海全黑，只看得到手電筒照到的東西跟生物自己的光——
+    // ABYSS_LIGHT_START~END 公尺之間把平光整段淡到 ABYSS_FLAT_LIGHT（接近 0），
+    // 潛水員靠 fresnel 輪廓光、生物靠手電筒（updateFlashlight）跟自體發光被看見。
+    const abyss = smoothstep((depthM - ABYSS_LIGHT_START_M) / (ABYSS_LIGHT_END_M - ABYSS_LIGHT_START_M));
+    this.abyssFactor = abyss;
+    this.ambient.intensity = THREE.MathUtils.lerp(Math.max(0.4, 1.0 - depthFrac * 0.6), ABYSS_FLAT_LIGHT, abyss);
+    this.hemi.intensity = THREE.MathUtils.lerp(Math.max(0.32, 1.2 - depthFrac * 0.88), ABYSS_FLAT_LIGHT, abyss);
     // 天空色改用「暖白偏青」當淺水基準（使用者原話：warm-white cyan），
     // 隨 depthFrac 往深海的漸層中間色過渡,不是固定不變。
     this.hemi.color.set(0xeafffb).lerp(gradMid, depthFrac);
@@ -2144,6 +2168,10 @@ export class DiveEngine {
     this.sunLight.position.set(this.cameraX, this.cameraY + 20, 10);
     this.sunLight.target.position.set(this.cameraX, this.cameraY - 4, 0);
     this.updateFlashlight(t, dt, depthFrac, diverX, diverY, diverZ);
+    // 潛水燈放在潛水員胸前、略朝鏡頭，照亮他自己跟身邊一兩個身長內的東西。
+    this.diverLamp.intensity = DIVER_LAMP_INTENSITY * abyss;
+    this.diverLamp.visible = abyss > 0.001;
+    this.diverLamp.position.set(diverX + 0.15, diverY + 0.35, diverZ + 0.9);
 
     // ---- 海面：推進 FFT、更新水線與天空 uniforms（要在鏡頭矩陣算好之後） ----
     if (oceanOn) {
@@ -2634,7 +2662,8 @@ export class DiveEngine {
         for (const m of c.rimMaterials) {
           const floor = m.userData.rimFloor as RimFloorTag;
           m.emissive.copy(floor.color);
-          m.emissiveIntensity = floor.max * depthFrac;
+          // round 21：深海（abyssFactor→1）幾乎拿掉這層底光，交給手電筒照亮。
+          m.emissiveIntensity = floor.max * depthFrac * (1 - this.abyssFactor * ABYSS_RIM_CUT);
         }
       }
       // 生物發光脈動（目前只有水母鐘部，見 JELLY_GLOW_*）：用這隻生物自己
