@@ -84,6 +84,21 @@ type Comb = {
   size: number;
 };
 
+// ⑤ 最後一章留下的 2 隻櫛水母的構圖位置（視窗比例 fx, fy）：桌機在右半邊、避開潛水員
+// （約 0.68~0.76, 0.45~0.55）；窄螢幕標題到 CTA 佔掉視窗約 17%~41%、潛水員在 0.42~0.5，
+// 放在左上角跟 CTA 下方那段空白。
+const FINALE_SLOTS: [number, number][][] = [
+  [
+    [0.6, 0.25],
+    [0.86, 0.62],
+  ],
+  [
+    [0.18, 0.08],
+    [0.22, 0.62],
+  ],
+];
+const narrowSlot = (narrow: boolean) => (narrow ? 1 : 0);
+
 export type ScreenExclusion = { x0: number; y0: number; x1: number; y1: number } | null;
 
 export class CombJellies {
@@ -91,12 +106,14 @@ export class CombJellies {
   private combs: Comb[] = [];
   private ndc = new THREE.Vector3();
   private dir = new THREE.Vector3();
+  private narrow: boolean;
 
   /**
    * count：數量；unitsPerM：引擎的世界單位／公尺；boost：深淵放大倍率；
    * narrow：窄螢幕（文字置中，可用滿版寬度）。
    */
   constructor(count: number, unitsPerM: number, boost: number, narrow: boolean) {
+    this.narrow = narrow;
     const geo = CombJellies.buildBody();
     for (let i = 0; i < count; i++) {
       const mat = new THREE.ShaderMaterial({
@@ -175,6 +192,8 @@ export class CombJellies {
     flash: { pos: THREE.Vector3; target: THREE.Vector3; angle: number; k: number },
     exclusion: ScreenExclusion,
     finale: number,
+    vpTop = 0,
+    vpScale = 1,
   ) {
     // 300m 開始出現，到底（1000m）都在
     const fadeIn = THREE.MathUtils.smoothstep(depthM, 280, 330);
@@ -190,15 +209,28 @@ export class CombJellies {
       // 包在鏡頭周圍的 Y：鏡頭往下沉 → 在畫面上往上飄；自身再極慢地上浮＋微微上下
       const rel = c.baseY * boxH - camera.position.y + time * 0.04;
       const wrapped = ((rel % boxH) + boxH) % boxH - boxH / 2;
-      const y = camera.position.y + wrapped + Math.sin(time * 0.35 + c.phase) * 0.08;
-      const x = camera.position.x + (c.fx - 0.5) * w + Math.sin(time * 0.12 + c.phase) * 0.15;
+      let y = camera.position.y + wrapped + Math.sin(time * 0.35 + c.phase) * 0.08;
+      let x = camera.position.x + (c.fx - 0.5) * w + Math.sin(time * 0.12 + c.phase) * 0.15;
+      // ⑤ 最後一章：留下的 2 隻慢慢漂到固定的構圖位置（畫面右側上／下），不再靠隨機位置碰運氣
+      // ——不這樣做，捲到底停住時牠們常常剛好繞在畫面外，結尾畫面空空的。
+      if (i < 2 && finale > 0) {
+        const slot = FINALE_SLOTS[narrowSlot(this.narrow)][i];
+        const sx = camera.position.x + (slot[0] - 0.5) * w + Math.sin(time * 0.12 + c.phase) * 0.12;
+        // slot 是視窗比例，換成 canvas 比例（捲到底時頁尾把舞台往上推）
+        const fy = vpTop + slot[1] * vpScale;
+        const sy = camera.position.y + (0.5 - fy) * h + Math.sin(time * 0.35 + c.phase) * 0.08;
+        const k = finale * finale * (3 - 2 * finale);
+        x = THREE.MathUtils.lerp(x, sx, k);
+        y = THREE.MathUtils.lerp(y, sy, k);
+      }
       const z = camera.position.z - c.dist;
       c.group.position.set(x, y, z);
       // 慢慢自轉（櫛帶在畫面上流過）＋輕微傾斜
       c.group.rotation.set(Math.sin(time * 0.2 + c.phase) * 0.22, time * c.spin + c.phase, Math.sin(time * 0.17 + c.phase * 1.3) * 0.18);
 
       // 進出包圍盒邊緣時淡出，不要在畫面上突然跳；CTA 排除區（⑤）內也淡掉
-      const edge = 1 - THREE.MathUtils.smoothstep(Math.abs(wrapped), boxH * 0.38, boxH * 0.5);
+      const edge0 = 1 - THREE.MathUtils.smoothstep(Math.abs(wrapped), boxH * 0.38, boxH * 0.5);
+      const edge = i < 2 ? THREE.MathUtils.lerp(edge0, 1, finale) : edge0;
       let excl = 1;
       if (exclusion) {
         this.ndc.copy(c.group.position).project(camera);

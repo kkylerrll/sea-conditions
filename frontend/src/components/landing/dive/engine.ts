@@ -227,13 +227,16 @@ const SCHOOL_TIMESCALE_AMP = 0.25;
 // 拒絕過可見光柱），只是讓材質算光照時多一個方向光源。
 // 強度由 environmentDarkness 在 FLASH_DARK_START~FLASH_DARK_END 之間
 // smoothstep 淡入；decay=2 為物理衰減，FLASH_DISTANCE 以外截斷。
-// 光源放在「鏡頭側、瞄準點前方 FLASH_STANDOFF」處，光池半徑 ≈ tan(angle)×standoff ≈ 3.8。
+// 光源在潛水員手上（round 21，見 updateFlashlight），光池半徑 ≈ tan(angle)×（潛水員到目標點的距離）。
 // decay=2 時強度 ∝ 距離²：原 140 @ 約 8 單位 → 7 單位約 110。
-const FLASH_MAX_INTENSITY = 200; // round 12 回饋「可以再亮一點」：110 → 200
+// round 21：光源搬到潛水員手上之後離近處的生物只有 2~3 單位，decay=2 會把牠們照到過曝成白色；
+// 改 decay=1、強度 26，2.5~6 單位內的亮度落在原本（200 @ 約 7 單位，decay 2）的同一個量級。
+const FLASH_MAX_INTENSITY = 26; // round 12 回饋「可以再亮一點」：110 → 200；round 21 換光源位置後重調
 const FLASH_ANGLE = 0.5;
 const FLASH_PENUMBRA = 0.8;
-const FLASH_DECAY = 2;
-const FLASH_STANDOFF = 7;
+const FLASH_DECAY = 1;
+// round 21：光源改在潛水員手上，目標點至少離他這麼遠（世界單位）。
+const FLASH_MIN_REACH = 1.2;
 const FLASH_DISTANCE = 16;
 const FLASH_DARK_START = 0.35;
 const FLASH_DARK_END = 0.75;
@@ -252,11 +255,13 @@ const FINALE_START_M = 850;
 const FINALE_END_M = 970;
 // 燈籠魚體長 7~12 cm，照真實比例在畫面上只有 10 px——放大 2.5 倍，讀得出「一群小魚」。
 const LANTERNFISH_BOOST = 2.5;
-// 潛水員身上的近距離點光源（見 diverLamp）：照亮範圍約 2.5 單位（≈4 公尺）。
-const DIVER_LAMP_INTENSITY = 2.2;
-const DIVER_LAMP_DISTANCE = 4;
+// 潛水員身上的近距離點光源（見 diverLamp）：只照得到他自己（約 1.6 單位）——範圍太大會把
+// 旁邊的鮟鱇魚也照亮，手電筒「照到／沒照到」的對比就不見了。
+const DIVER_LAMP_INTENSITY = 2.4;
+const DIVER_LAMP_DISTANCE = 1.6;
 // 游標對應的目標點落在這個 z 平面（生物車道大約 -1~-8 的中段）。
 const FLASH_PLANE_Z = -4;
+const FLASH_PLANE_Z_ABYSS = 0.2;
 // 目標點指數平滑時間常數（秒）。
 const FLASH_AIM_TAU = 0.15;
 
@@ -773,7 +778,7 @@ export class DiveEngine {
   // position 一起正確更新 matrixWorld。
   private sunLight: THREE.DirectionalLight;
   // round 12：游標光池（SpotLight，不投影、無可見光束幾何），瞄向游標／最後觸控點
-  // 在 FLASH_PLANE_Z 平面上的對應點，光源在鏡頭側；尚無輸入時停在潛水員附近漂移。
+  // 在 FLASH_PLANE_Z（深海漸變到 FLASH_PLANE_Z_ABYSS）平面上的對應點，光源在潛水員手上（round 21）；尚無輸入時停在潛水員附近漂移。
   // flashAim 是平滑後的目標點，flashPointerNdc 為 null 代表沒輸入。
   private flashLight: THREE.SpotLight;
   // round 21：深海平光拿掉之後潛水員變成全黑剪影——身上掛一盞很弱、照得很近的
@@ -794,6 +799,7 @@ export class DiveEngine {
   private diverHeadBone: THREE.Object3D | null = null;
   private headTmp = new THREE.Vector3();
   private flashPointerNdc: THREE.Vector2 | null = null;
+  private flashDir = new THREE.Vector3();
   // 0＝150m 以淺（平光照常）、1＝300m 以深（全黑），每幀在 update() 算一次，
   // updateCreatures 用它壓 rim floor、海雪用它調亮度。
   private abyssFactor = 0;
@@ -801,6 +807,9 @@ export class DiveEngine {
   private finale = 0;
   private exclFrame = 0;
   private exclTmp = new THREE.Vector3();
+  // 視窗 → canvas 的垂直換算：canvas 比例 fy = vpTop + 視窗比例 × vpScale（updateCtaExclusion 更新）
+  private vpTop = 0;
+  private vpScale = 1;
   private exclRect = { x0: 0, y0: 0, x1: 0, y1: 0 };
   private flashRay = new THREE.Raycaster();
   private flashTmp = new THREE.Vector3();
@@ -1015,6 +1024,22 @@ export class DiveEngine {
     window.addEventListener("resize", this.handleResize);
 
     this.spawnCreatures();
+    // 開發環境專用的驗收探針：回傳每隻生物目前的螢幕座標（px）跟是否可見，讓截圖腳本可以把
+    // 手電筒精準對準某隻生物、比對「照到／沒照到」（round 21：生物位置隨機又會移動，用猜的對不準）。
+    // 正式版不會掛上去。
+    if (process.env.NODE_ENV !== "production") {
+      (window as unknown as { __diveProbe?: () => unknown }).__diveProbe = () => {
+        const r = this.canvas.getBoundingClientRect();
+        const v = new THREE.Vector3();
+        return this.creatures
+          .filter((c) => c.root.visible && c.root.parent)
+          .map((c) => {
+            c.root.getWorldPosition(v).project(this.camera);
+            return { kind: c.kind, x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height, z: v.z };
+          })
+          .filter((p) => p.z < 1 && p.x > 0 && p.x < r.right && p.y > 0 && p.y < r.bottom);
+      };
+    }
     // 七個模型全部壓縮後只有～2.6MB，不分批、不等待閒置或捲動進度——
     // 見 models.ts 的 ALL_MODELS 註解，分批載入省下的頻寬完全不值得
     // 「深海生物準時出現」這件事被犧牲掉。
@@ -1446,6 +1471,8 @@ export class DiveEngine {
       this.exclRect.y0 = (y0 - cr.top) / cr.height;
       this.exclRect.x1 = (x1 - cr.left) / cr.width;
       this.exclRect.y1 = (y1 - cr.top) / cr.height;
+      this.vpTop = -cr.top / cr.height;
+      this.vpScale = (window.innerHeight || cr.height) / cr.height;
     }
     this.ctaExclusion = this.exclRect;
   }
@@ -1454,6 +1481,22 @@ export class DiveEngine {
     const edge = this.narrowLayout ? 1 : THREE.MathUtils.smoothstep(fromLeft, 0, 1.2);
     // ⑤ 最後一章：只留 finaleKeep 那一隻，其他慢慢淡出
     let alpha = edge * (c.finaleKeep ? 1 : 1 - this.finale);
+    // ⑤ 留下的那隻在最後一章慢慢游到固定的遠處位置（桌機視窗右上、手機 CTA 下方右側），
+    // 結尾一定看得到一點誘餌光，不靠隨機位置碰運氣（手機的位置避開 CTA 排除區＋邊距）。
+    if (c.finaleKeep && this.finale > 0) {
+      const dist = 6 - c.laneZ;
+      const w = this.visibleWidthAt(dist);
+      const h = this.visibleHeightAt(dist);
+      // 位置用「視窗比例」定義再換成 canvas 比例：捲到底時頁尾會把舞台往上推（手機推得更多），
+      // 直接用 canvas 比例會整個偏上。先移動、後面才判斷 CTA 排除區（順序反了會用舊位置判斷）。
+      const fx = this.narrowLayout ? 0.75 : 0.88;
+      const fy = this.vpTop + (this.narrowLayout ? 0.6 : 0.2) * this.vpScale;
+      const k = this.finale * this.finale * (3 - 2 * this.finale);
+      const p = c.root.position;
+      p.x = THREE.MathUtils.lerp(p.x, this.cameraX + (fx - 0.5) * w, k);
+      p.y = THREE.MathUtils.lerp(p.y, this.cameraY + (0.5 - fy) * h, k);
+      c.root.visible = true;
+    }
     // ⑤ 留下的那隻也不能壓在標題／CTA 上（手機版文字置中、滿版，最容易撞到）：
     // 投影到螢幕，進入排除區（上下多留 10%）就淡出
     const ex = this.ctaExclusion;
@@ -1465,6 +1508,7 @@ export class DiveEngine {
       const inY = THREE.MathUtils.smoothstep(sy, ex.y0 - 0.14, ex.y0 - 0.04) * (1 - THREE.MathUtils.smoothstep(sy, ex.y1 + 0.04, ex.y1 + 0.14));
       alpha *= 1 - this.finale * inX * inY;
     }
+
     c.root.visible = c.root.visible && alpha > 0.01;
     c.root.traverse((o) => {
       if (!(o instanceof THREE.Mesh || o instanceof THREE.Sprite)) return;
@@ -1909,7 +1953,7 @@ export class DiveEngine {
   }
 
   /** 游標光池：目標點平滑追游標（桌機滑鼠／最後一次觸控點）在 FLASH_PLANE_Z 平面
-      上的對應點；光源放在鏡頭到目標點連線上、離目標點 FLASH_STANDOFF 處。
+      上的對應點；光源放在鏡頭到目標點連線上（round 21 起改為潛水員手上，見下方）。
       還沒有任何輸入時，光池停在潛水員附近緩慢漂移。強度隨 darkness 淡入。 */
   private updateFlashlight(t: number, dt: number, darkness: number, diverX: number, diverY: number, diverZ: number) {
     const k = THREE.MathUtils.clamp((darkness - FLASH_DARK_START) / (FLASH_DARK_END - FLASH_DARK_START), 0, 1);
@@ -1921,16 +1965,29 @@ export class DiveEngine {
     if (this.flashPointerNdc) {
       this.flashRay.setFromCamera(this.flashPointerNdc, this.camera);
       const r = this.flashRay.ray;
-      const s = r.direction.z !== 0 ? (FLASH_PLANE_Z - r.origin.z) / r.direction.z : 0;
+      // round 21：深海生物（鮟鱇魚、櫛水母、燈籠魚）大多在 z≈0~1，瞄準平面跟著 abyssFactor 從 -4 拉到
+      // FLASH_PLANE_Z_ABYSS，不然從潛水員手上射向 z=-4 的光束跟游標底下的生物有視差，照不到。
+      const planeZ = THREE.MathUtils.lerp(FLASH_PLANE_Z, FLASH_PLANE_Z_ABYSS, this.abyssFactor);
+      const s = r.direction.z !== 0 ? (planeZ - r.origin.z) / r.direction.z : 0;
       goal.copy(r.origin).addScaledVector(r.direction, Math.max(0, s));
     } else {
       goal.set(diverX + Math.sin(t * 0.35) * 1.2, diverY + Math.sin(t * 0.23) * 0.8, diverZ);
     }
     this.flashAim.lerp(goal, 1 - Math.exp(-dt / FLASH_AIM_TAU));
-    this.flashLight.target.position.copy(this.flashAim);
-    // 光源 = 目標點朝鏡頭方向退 FLASH_STANDOFF（位置也隨平滑後的目標點移動）。
-    this.flashTmp.copy(this.camera.position).sub(this.flashAim).normalize();
-    this.flashLight.position.copy(this.flashAim).addScaledVector(this.flashTmp, FLASH_STANDOFF);
+    // round 21：光源從「鏡頭側、目標點前方 FLASH_STANDOFF」改成「潛水員手上」——深海平光拿掉之後，
+    // 游標移到潛水員身上時，鏡頭側的光源會把黑色防寒衣照成一片白。真的手電筒在潛水員手上，
+    // 他自己不在光錐裡；光池照樣跟著游標走。目標點離潛水員太近（游標指著他本人）時，沿著
+    // 潛水員→目標的方向推到至少 FLASH_MIN_REACH 外，避免方向退化。
+    this.flashTmp.set(diverX, diverY, diverZ);
+    this.flashDir.copy(this.flashAim).sub(this.flashTmp);
+    let reach = this.flashDir.length();
+    // 只有游標幾乎就指在潛水員本人身上時方向才會退化，這時改成往前（-z）照
+    if (reach < 0.3) {
+      this.flashDir.set(0, 0, -1);
+      reach = 0;
+    } else this.flashDir.divideScalar(reach);
+    this.flashLight.target.position.copy(this.flashTmp).addScaledVector(this.flashDir, Math.max(reach, FLASH_MIN_REACH));
+    this.flashLight.position.copy(this.flashTmp).addScaledVector(this.flashDir, 0.35);
   }
 
   start() {
@@ -2268,7 +2325,7 @@ export class DiveEngine {
     this.finale = smoothstep((depthM - FINALE_START_M) / (FINALE_END_M - FINALE_START_M));
     this.updateCtaExclusion();
     this.snow.setExclusion(this.ctaExclusion, this.finale);
-    this.combJellies.update(t, this.camera, depthM, this.snowFlash, this.ctaExclusion, this.finale);
+    this.combJellies.update(t, this.camera, depthM, this.snowFlash, this.ctaExclusion, this.finale, this.vpTop, this.vpScale);
     this.lanternfish.update(t, dt, this.camera, depthM);
 
     // ---- 海面：推進 FFT、更新水線與天空 uniforms（要在鏡頭矩陣算好之後） ----
