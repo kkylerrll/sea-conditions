@@ -334,11 +334,11 @@ export const MODEL_REGISTRY: Record<ModelName, ModelEntry> = {
     // rad），疊在引擎自己的漂浮上就變成「斜 30~40° 的碟子」。拿掉它，水母的位置跟朝向只
     // 由引擎決定，鐘體收縮（其餘骨頭）照常播。
     stripNodeTracks: ["Pos_204"],
-    bodyLengthM: 0.4,
-    legibilityBoost: "abyss",
+    // round 21：搬回 5~25m，用真實鐘徑 0.3 m，不再套深淵放大倍率。
+    bodyLengthM: 0.3,
     rotationOffset: new THREE.Euler(0, 0, 0),
     travelYaw: 0,
-    depthM: 1000,
+    depthM: 15,
     animationClip: "Loop-400",
     credit: {
       title: "Simple Moon Jellyfish (Baked Animation)",

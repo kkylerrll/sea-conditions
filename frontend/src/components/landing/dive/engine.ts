@@ -46,6 +46,7 @@ import { cameraPitchAt, DIVER_INTRO_END, DIVER_INTRO_START } from "./cameraPath"
 import { BUOY_TILT, WORLD_UNITS_PER_METER } from "./ocean/config";
 import { canBuildOcean, OceanWorld } from "./ocean/oceanWorld";
 import { MarineSnow } from "./marineSnow";
+import { CombJellies, type ScreenExclusion } from "./combJellies";
 import {
   MODEL_REGISTRY,
   ALL_MODELS,
@@ -155,7 +156,9 @@ const TURTLE_RANGE: [number, number] = [progressAt(Math.max(3, MIN_CREATURE_DEPT
 // 完全沒有生物的空窗——改成 progressAt(90) 跟海龜/鎚頭鯊延長後的上緣
 // 重疊，捲動過程才會一直有東西經過。
 const ANGLER_RANGE: [number, number] = [progressAt(300), 1.0];
-const JELLY_RANGE: [number, number] = [progressAt(90), 1.0];
+// round 21：海月水母（Aurelia）是近岸表層的水母，出現在 90~1000m 懂潛水的人一看就知道不對
+// ——搬回 5~25m，跟珊瑚礁魚同場。深淵的「水母」改成程序化的櫛水母（見 combJellies.ts）。
+const JELLY_RANGE: [number, number] = [progressAt(5), progressAt(25)];
 
 // round 8：鯖魚群是唯一的「school」物種——整群共用一個代表深度去算水平
 // 車道的可視寬度（見 DiveEngine.groupLaneHalfWidth／updateCreatures 的
@@ -240,6 +243,9 @@ const ABYSS_LIGHT_START_M = 150;
 const ABYSS_LIGHT_END_M = 300;
 const ABYSS_FLAT_LIGHT = 0.015;
 const ABYSS_RIM_CUT = 0.92;
+// 櫛水母放大倍率：深海的大型球櫛水母約 15~22 cm，照真實比例在畫面上只有 30 px 左右，
+// 彩虹櫛帶糊成一條線——放大 3 倍（約 0.5~0.7 m 的視覺尺寸），牠是深淵的主角，要看得清楚。
+const COMB_JELLY_BOOST = 3;
 // 潛水員身上的近距離點光源（見 diverLamp）：照亮範圍約 2.5 單位（≈4 公尺）。
 const DIVER_LAMP_INTENSITY = 2.2;
 const DIVER_LAMP_DISTANCE = 4;
@@ -565,40 +571,45 @@ function styleJellyMaterial(m: THREE.MeshStandardMaterial) {
         : n.includes("palettematerial003") || n.includes("palettematerial004")
           ? "arm"
           : "bell";
+  // round 21：水母搬到 5~25m 的陽光水域——原本深淵用的「加法混合＋強 emissive」在亮藍背景
+  // 上會洗成實心白、像發光的燈罩。白天的海月水母是乳白半透明的罩子、中央四個淡粉紫生殖腺
+  // 環、口腕跟鐘緣觸手很淡：改回一般混合，靠陽光／平光照亮，emissive 只留一點點讓背光面不死黑。
   const P = {
-    // 鐘體內外兩層、輻管都是加法疊上去的，各自要很淡，疊起來才不會洗成實心白。
-    bell: { opacity: 0.3, emissive: 0x8fe8ff, k: 0.22, rim: 1.4 },
-    canal: { opacity: 0.25, emissive: 0xaef6ff, k: 0.3, rim: 0 },
-    gonad: { opacity: 0.45, emissive: 0xcdb8ff, k: 0.6, rim: 0 },
-    arm: { opacity: 0.4, emissive: 0xbff6ff, k: 0.45, rim: 0 },
-    tentacle: { opacity: 0.55, emissive: 0xd8fbff, k: 0.6, rim: 0 },
+    bell: { color: 0xe6f3f7, opacity: 0.26, emissive: 0x9fd6e6, k: 0.05, rim: 1.6 },
+    canal: { color: 0xf2f7fa, opacity: 0.22, emissive: 0xbfe6f0, k: 0.04, rim: 0 },
+    gonad: { color: 0xf0c3d6, opacity: 0.6, emissive: 0xd99ab8, k: 0.06, rim: 0 },
+    arm: { color: 0xeaf2f5, opacity: 0.3, emissive: 0xbfe0ea, k: 0.03, rim: 0 },
+    tentacle: { color: 0xf4f8fa, opacity: 0.32, emissive: 0xd0eaf2, k: 0.03, rim: 0 },
   }[part];
   m.map = null;
   m.emissiveMap = null;
   m.transparent = true;
   m.depthWrite = false;
   m.side = THREE.DoubleSide;
-  m.blending = THREE.AdditiveBlending;
-  // 底色壓暗：加法混合下，手電筒打在淺色底色上的漫射光會把鐘體洗成實心白，亮度交給 emissive。
-  m.color = new THREE.Color(0x1d3540);
+  m.blending = THREE.NormalBlending;
+  m.color = new THREE.Color(P.color);
+  m.roughness = 0.25;
+  m.metalness = 0;
   m.opacity = P.opacity;
   m.emissive = new THREE.Color(P.emissive);
   m.emissiveIntensity = JELLY_GLOW_BASE * P.k;
-  m.userData.bioGlow = { base: JELLY_GLOW_BASE * P.k, amp: JELLY_GLOW_AMP * P.k, speed: JELLY_GLOW_SPEED };
+  m.userData.bioGlow = { base: JELLY_GLOW_BASE * P.k, amp: JELLY_GLOW_AMP * P.k * 0.5, speed: JELLY_GLOW_SPEED };
   if (P.rim > 0) {
     const rim = P.rim.toFixed(2);
-    // fresnel：法線越接近垂直視線（鐘緣）越亮；DoubleSide 用 abs，內外兩面都成立。
+    // fresnel：鐘緣（法線接近垂直視線）比較不透明、比較亮，正對鏡頭的鐘頂幾乎透明——
+    // 這是「透得過去的罩子」的關鍵。DoubleSide 用 abs，內外兩面都成立。
     m.onBeforeCompile = (shader) => {
       shader.fragmentShader = shader.fragmentShader.replace(
-        "#include <emissivemap_fragment>",
-        `#include <emissivemap_fragment>
-  {
+        "#include <opaque_fragment>",
+        `{
     float jellyRim = 1.0 - abs(dot(normalize(normal), normalize(vViewPosition)));
-    totalEmissiveRadiance *= 0.15 + ${rim} * pow(jellyRim, 4.0);
-  }`,
+    diffuseColor.a *= 0.35 + ${rim} * pow(jellyRim, 2.5);
+    outgoingLight += vec3(0.08, 0.12, 0.14) * pow(jellyRim, 3.0);
+  }
+  #include <opaque_fragment>`,
       );
     };
-    m.customProgramCacheKey = () => `jellyRim:${rim}`;
+    m.customProgramCacheKey = () => `jellyDay:${rim}`;
   }
   m.needsUpdate = true;
 }
@@ -763,6 +774,10 @@ export class DiveEngine {
   private diverLamp: THREE.PointLight;
   // round 21：海雪（見 marineSnow.ts），30m 以下才出現。
   private snow: MarineSnow;
+  // round 21：深淵的櫛水母（見 combJellies.ts），取代原本放在深淵的海月水母。
+  private combJellies: CombJellies;
+  // ⑤：最後一章 CTA 的畫面排除區（0~1 螢幕比例），null＝不排除。
+  private ctaExclusion: ScreenExclusion = null;
   private snowFlash = { pos: new THREE.Vector3(), target: new THREE.Vector3(), angle: FLASH_ANGLE, k: 0 };
   private flashAim = new THREE.Vector3(0, -2, FLASH_PLANE_Z);
   // 潛水員頭部骨頭（真模型載入後由 findDiverHeadBone 找到並快取）與暫存向量。
@@ -892,6 +907,8 @@ export class DiveEngine {
     this.scene.add(this.diverLamp);
     this.snow = new MarineSnow(this.mobile ? 900 : 2400, this.renderer.getPixelRatio());
     this.scene.add(this.snow.points);
+    this.combJellies = new CombJellies(this.mobile ? 3 : 6, UNITS_PER_M, COMB_JELLY_BOOST, this.narrowLayout);
+    this.scene.add(this.combJellies.group);
     window.addEventListener("pointermove", this.handlePointerMove, { passive: true });
     window.addEventListener("pointerdown", this.handlePointerMove, { passive: true });
 
@@ -1660,8 +1677,9 @@ export class DiveEngine {
     // 分散在可視寬度內（桌機跟鮟鱇魚一樣只用右側 2/3，不疊到左邊文字欄）。35 cm 的
     // 鐘部＝0.21 單位，車道拉近到 -2~2.5（離鏡頭 3.5~8）才看得出是水母。
     // round 20 第二輪：鐘體放大 2 倍之後 12 隻會擠成一團，降到 8／5。
-    const jellyCount = this.mobile ? 5 : 8;
-    const jelly = this.spawnInRange("jellyfish", "drift", JELLY_RANGE, jellyCount, [-2, 2.5]);
+    // round 21：搬回淺水後只放幾隻（桌機 4／手機 2），跟礁魚同場不搶戲。
+    const jellyCount = this.mobile ? 2 : 4;
+    const jelly = this.spawnInRange("jellyfish", "drift", JELLY_RANGE, jellyCount, [-1.5, 3]);
     for (const c of jelly) {
       c.radius = 0.15 + Math.random() * 0.2; // 左右搖擺幅度（單位）
       c.speed = 0.8 + Math.random() * 0.5; // 收縮脈動角速度（rad/s）：週期約 5~8 秒
@@ -2183,6 +2201,7 @@ export class DiveEngine {
     this.snowFlash.target.copy(this.flashLight.target.position);
     this.snowFlash.k = this.flashLight.visible ? this.flashLight.intensity / FLASH_MAX_INTENSITY : 0;
     this.snow.update(t, this.camera, depthM, Math.abs(velocity), this.snowFlash);
+    this.combJellies.update(t, this.camera, depthM, this.snowFlash, this.ctaExclusion);
 
     // ---- 海面：推進 FFT、更新水線與天空 uniforms（要在鏡頭矩陣算好之後） ----
     if (oceanOn) {
