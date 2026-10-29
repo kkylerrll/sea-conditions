@@ -47,6 +47,7 @@ import { BUOY_TILT, WORLD_UNITS_PER_METER } from "./ocean/config";
 import { canBuildOcean, OceanWorld } from "./ocean/oceanWorld";
 import { MarineSnow } from "./marineSnow";
 import { CombJellies, type ScreenExclusion } from "./combJellies";
+import { LanternfishSchool } from "./lanternfish";
 import {
   MODEL_REGISTRY,
   ALL_MODELS,
@@ -246,6 +247,8 @@ const ABYSS_RIM_CUT = 0.92;
 // 櫛水母放大倍率：深海的大型球櫛水母約 15~22 cm，照真實比例在畫面上只有 30 px 左右，
 // 彩虹櫛帶糊成一條線——放大 3 倍（約 0.5~0.7 m 的視覺尺寸），牠是深淵的主角，要看得清楚。
 const COMB_JELLY_BOOST = 3;
+// 燈籠魚體長 7~12 cm，照真實比例在畫面上只有 10 px——放大 2.5 倍，讀得出「一群小魚」。
+const LANTERNFISH_BOOST = 2.5;
 // 潛水員身上的近距離點光源（見 diverLamp）：照亮範圍約 2.5 單位（≈4 公尺）。
 const DIVER_LAMP_INTENSITY = 2.2;
 const DIVER_LAMP_DISTANCE = 4;
@@ -776,6 +779,8 @@ export class DiveEngine {
   private snow: MarineSnow;
   // round 21：深淵的櫛水母（見 combJellies.ts），取代原本放在深淵的海月水母。
   private combJellies: CombJellies;
+  // round 21：暮光帶（200~600m）的燈籠魚群（見 lanternfish.ts）。
+  private lanternfish: LanternfishSchool;
   // ⑤：最後一章 CTA 的畫面排除區（0~1 螢幕比例），null＝不排除。
   private ctaExclusion: ScreenExclusion = null;
   private snowFlash = { pos: new THREE.Vector3(), target: new THREE.Vector3(), angle: FLASH_ANGLE, k: 0 };
@@ -909,6 +914,8 @@ export class DiveEngine {
     this.scene.add(this.snow.points);
     this.combJellies = new CombJellies(this.mobile ? 3 : 6, UNITS_PER_M, COMB_JELLY_BOOST, this.narrowLayout);
     this.scene.add(this.combJellies.group);
+    this.lanternfish = new LanternfishSchool(this.mobile ? 20 : 40, UNITS_PER_M, LANTERNFISH_BOOST, this.narrowLayout, this.renderer.getPixelRatio());
+    this.scene.add(this.lanternfish.group);
     window.addEventListener("pointermove", this.handlePointerMove, { passive: true });
     window.addEventListener("pointerdown", this.handlePointerMove, { passive: true });
 
@@ -2202,6 +2209,7 @@ export class DiveEngine {
     this.snowFlash.k = this.flashLight.visible ? this.flashLight.intensity / FLASH_MAX_INTENSITY : 0;
     this.snow.update(t, this.camera, depthM, Math.abs(velocity), this.snowFlash);
     this.combJellies.update(t, this.camera, depthM, this.snowFlash, this.ctaExclusion);
+    this.lanternfish.update(t, dt, this.camera, depthM);
 
     // ---- 海面：推進 FFT、更新水線與天空 uniforms（要在鏡頭矩陣算好之後） ----
     if (oceanOn) {
