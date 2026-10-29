@@ -45,6 +45,7 @@ import {
 import { cameraPitchAt, DIVER_INTRO_END, DIVER_INTRO_START } from "./cameraPath";
 import { BUOY_TILT, WORLD_UNITS_PER_METER } from "./ocean/config";
 import { canBuildOcean, OceanWorld } from "./ocean/oceanWorld";
+import { MarineSnow } from "./marineSnow";
 import {
   MODEL_REGISTRY,
   ALL_MODELS,
@@ -760,6 +761,9 @@ export class DiveEngine {
   // 點光源（只照亮材質，沒有任何光束幾何，round 2 使用者拒絕過可見光柱），
   // 只在 abyssFactor 上升時亮起，讓潛水員的裝備在全黑裡仍看得出形狀。
   private diverLamp: THREE.PointLight;
+  // round 21：海雪（見 marineSnow.ts），30m 以下才出現。
+  private snow: MarineSnow;
+  private snowFlash = { pos: new THREE.Vector3(), target: new THREE.Vector3(), angle: FLASH_ANGLE, k: 0 };
   private flashAim = new THREE.Vector3(0, -2, FLASH_PLANE_Z);
   // 潛水員頭部骨頭（真模型載入後由 findDiverHeadBone 找到並快取）與暫存向量。
   private diverHeadBone: THREE.Object3D | null = null;
@@ -886,6 +890,8 @@ export class DiveEngine {
     this.scene.add(this.flashLight.target);
     this.diverLamp = new THREE.PointLight(0xdfeeff, 0, DIVER_LAMP_DISTANCE, 2);
     this.scene.add(this.diverLamp);
+    this.snow = new MarineSnow(this.mobile ? 900 : 2400, this.renderer.getPixelRatio());
+    this.scene.add(this.snow.points);
     window.addEventListener("pointermove", this.handlePointerMove, { passive: true });
     window.addEventListener("pointerdown", this.handlePointerMove, { passive: true });
 
@@ -2172,6 +2178,11 @@ export class DiveEngine {
     this.diverLamp.intensity = DIVER_LAMP_INTENSITY * abyss;
     this.diverLamp.visible = abyss > 0.001;
     this.diverLamp.position.set(diverX + 0.15, diverY + 0.35, diverZ + 0.9);
+    // 海雪：鏡頭往下沉，粒子在畫面上就往上飄；手電筒光錐內的粒子會亮起來。
+    this.snowFlash.pos.copy(this.flashLight.position);
+    this.snowFlash.target.copy(this.flashLight.target.position);
+    this.snowFlash.k = this.flashLight.visible ? this.flashLight.intensity / FLASH_MAX_INTENSITY : 0;
+    this.snow.update(t, this.camera, depthM, Math.abs(velocity), this.snowFlash);
 
     // ---- 海面：推進 FFT、更新水線與天空 uniforms（要在鏡頭矩陣算好之後） ----
     if (oceanOn) {
