@@ -103,7 +103,6 @@ function ActivityToggle({
             type="button"
             role="radio"
             aria-checked={active}
-            aria-pressed={active}
             onClick={() => onChange(opt)}
             className={`min-h-11 min-w-[64px] cursor-pointer rounded-full px-3 text-sm font-semibold outline-none transition-colors duration-200 motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-1 ${
               active ? "bg-white text-ocean-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
