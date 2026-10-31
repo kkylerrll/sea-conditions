@@ -12,7 +12,9 @@ def test_seed_and_api():
     seed.run()  # 重複執行要安全（upsert）
 
     with TestClient(app) as client:
-        assert client.get("/health").status_code == 200
+        health = client.get("/health")
+        assert health.status_code == 200
+        assert "commit" in health.json()
         res = client.get("/api/locations")
         assert res.status_code == 200
         body = res.json()
