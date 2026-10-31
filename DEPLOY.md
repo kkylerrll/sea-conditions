@@ -137,7 +137,7 @@ curl -X POST 'https://sea-conditions-api.onrender.com/api/refresh?wait=true'
 | Open-Meteo / CWA API          | $0                         |
 | **合計**                      | **$0**（不開 AI 建議的話） |
 
-代價：Render 免費方案閒置會休眠，冷啟動 ~50 秒。要無休眠就升 Render Starter（$7/月）或改回 Fly（綁卡，~$2–4/月，`backend/fly.toml` 已備妥）。
+代價：Render 免費方案閒置會休眠，冷啟動 ~50 秒。要無休眠就升 Render Starter（$7/月）。
 
 ---
 
