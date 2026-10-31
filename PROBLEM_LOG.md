@@ -5,6 +5,12 @@
 
 ---
 
+## 2026-10-31　套用 kit 的 CI：`ruff --fix` 差點弄壞本機 3.9、`next lint` 讓 CI 卡在互動選單
+- **症狀**：ruff 回報 121 個錯誤、117 個「可自動修」，大多是 `Optional[X]` → `X | None`。前端 CI 的 lint 步驟（`next lint`）在沒有 ESLint 設定時跳出「How would you like to configure ESLint?」選單，非互動環境直接 exit 1。
+- **根因**：專案沒有 ruff 設定，預設規則讓 pyupgrade 改寫型別註解；但本機是 Python 3.9，SQLAlchemy `Mapped[...]` 和 Pydantic 會在執行期解析註解，`X | None` 在 3.9 會炸（`models.py`、`schemas.py` 有註解說明）。前端從來沒裝過 ESLint，所以 production build 一直默默跳過 lint。
+- **修法**（`dev-kit` 分支）：`backend/ruff.toml` 設 `target-version = "py39"` 和 `keep-runtime-typing = true`，剩下的才 `--fix`，再用 `backend/.venv`（3.9）import 一次確認。前端裝 `eslint@8` + `eslint-config-next@14.2.15`，`.eslintrc.json` 用 `next/core-web-vitals`。
+- **避免**：跑任何自動修正前，先確認它假設的 Python 版本跟本機、正式環境都相容；修完用最舊的那個版本 import 一次。新加的 CI 步驟要先在本機用 `CI=true <指令> </dev/null` 跑過，確認不會停下來等輸入。
+
 ## 2026-10-29　深海裡沒被照到的生物變成「黑色剪影」，比背景還黑
 - **症狀**：平光拿掉之後，沒被照到的鮟鱇魚、燈籠魚魚身是一塊塊純黑的洞，貼在深藍背景上。真正的黑暗裡，沒被照到的動物應該是看不見的。
 - **根因**：背景是深藍漸層（`waterBg`），生物沒有光照時 shading 趨近 0（純黑），比背景更暗，所以反而顯眼。
@@ -26,7 +32,7 @@
 - **症狀**：游標移到潛水員身上時，黑色防寒衣變成一片白；光源搬到潛水員手上之後，近處的鮟鱇魚過曝；游標指著潛水員旁邊的魚，光束卻打偏。
 - **根因**：(1) 光源放在鏡頭側，離潛水員最近；(2) 搬到潛水員手上後，近處生物只有 2～3 單位遠，decay=2 讓亮度暴增；(3) 瞄準平面固定在 z=-4（淺水生物的車道），深海生物在 z≈0～1，有視差。
 - **修法**：光源改在潛水員手上；decay 1、強度 26；深海的瞄準平面依 abyssFactor 拉到 z=0.2；潛水燈的照射範圍縮到 1.6，只照他自己。
-- **避免**：「照到／沒照到」的對比要用**同一個 session 精準對準某隻生物**來驗收（`window.__diveProbe` 加上 scratchpad 的 flashpair.mjs），不要靠隨機位置猜。調光源位置時，同時檢查近、中、遠三種距離的亮度。
+- **避免**：「照到／沒照到」的對比要用**同一個 session 精準對準某隻生物**來驗收（`window.__diveProbe` 加上 `tools/dive-shots/flashpair.mjs`），不要靠隨機位置猜。調光源位置時，同時檢查近、中、遠三種距離的亮度。
 
 ## 2026-10-29　結尾畫面靠運氣：留下的生物常常剛好在畫面外，位置也整個偏上
 - **根因**：(1) 生物位置隨機又會繞圈，捲到底停住時不一定在畫面裡；(2) 捲到最底時頁尾會把 sticky 舞台往上推（手機推得更多），用 canvas 比例設定的位置在視窗裡整個偏上；(3) 排除區判斷寫在移動之前，用的是舊位置。
