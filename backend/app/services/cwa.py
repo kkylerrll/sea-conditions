@@ -13,7 +13,6 @@
 
 from __future__ import annotations
 
-import datetime as dt
 import json
 import logging
 import re
@@ -54,7 +53,7 @@ def _iter_dicts(node: Any):
 
 def _find_datetime(d: dict) -> Optional[str]:
     for k, v in d.items():
-        if isinstance(v, str) and re.search(r"time|date", k, re.I):
+        if isinstance(v, str) and re.search(r"time|date", k, re.IGNORECASE):
             m = re.search(r"(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})", v)
             if m:
                 return f"{m.group(1)}T{m.group(2)}"
@@ -71,7 +70,7 @@ def _find_tide_kind(d: dict) -> Optional[str]:
 def fetch_tide_schedule(station_name: Optional[str], timeout: float = 20.0, strict: bool = False) -> dict[str, dict]:
     """回傳 {date_iso: {"tide_high": "05:12 / 17:40", "tide_low": "11:20 / 23:50"}}。
 
-    抓不到就回傳空 dict（strict=True 時請求失敗改為拋出例外，供 refresh 統計失敗數）。整月資料一次抓回，呼叫端自己挑日期。
+    抓不到就回傳空 dict（strict=True 時請求失敗或解析不到資料改為拋出例外，供 refresh 統計失敗數）。整月資料一次抓回，呼叫端自己挑日期。
     """
 
     if not _enabled() or not station_name:
@@ -91,7 +90,7 @@ def fetch_tide_schedule(station_name: Optional[str], timeout: float = 20.0, stri
             )
             resp.raise_for_status()
             payload = resp.json()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.warning("CWA 潮汐抓取失敗（%s）：%s", station_name, exc)
         if strict:
             raise
@@ -124,7 +123,10 @@ def fetch_tide_schedule(station_name: Optional[str], timeout: float = 20.0, stri
         }
 
     if not result:
-        log.info("CWA 潮汐：%s 沒有解析到任何資料（結構可能有變，見 %s）", station_name, _SAMPLE_DUMP.name)
+        log.warning("CWA 潮汐：%s 沒有解析到任何資料（結構可能有變，見 %s）", station_name, _SAMPLE_DUMP.name)
+        if strict:
+            # 請求成功但解析不到東西也算失敗，refresh 才會計入 tide_failed
+            raise ValueError(f"CWA 潮汐：{station_name} 沒有解析到任何資料")
     return result
 
 

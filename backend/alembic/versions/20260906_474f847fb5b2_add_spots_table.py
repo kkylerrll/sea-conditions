@@ -6,11 +6,11 @@ Create Date: 2026-09-06 18:13:24.892390+08:00
 """
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
+from typing import Union
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision: str = '474f847fb5b2'
 down_revision: Union[str, None] = '494e5460a629'
