@@ -8,7 +8,7 @@
 - 後端：`cd backend && source .venv/bin/activate && python -m app.seed && uvicorn app.main:app --reload`。
   本機 Python 是 3.9：SQLAlchemy／Pydantic 的註解保留 `Optional[...]`。
 - 測試 / 型別檢查：跟 CI 一樣（`.github/workflows/ci-frontend.yml`、`ci-backend.yml`）。
-- 首頁 3D 截圖驗收：`tools/dive-shots/`（`flashpair.mjs`、`closeup.mjs` 需要 dev 模式的 `window.__diveProbe`）。
+- 首頁 3D 截圖驗收：一般深度截圖用 `/verify-visual --probe`；`tools/dive-shots/` 只放專案專用的（`flashpair.mjs`、`closeup.mjs` 需要 dev 模式的 `window.__diveProbe`）。
 
 ## 部署
 - 前端 Vercel、後端 Render（`render.yaml`，Docker），都是 push 到 `main` 自動部署。

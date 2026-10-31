@@ -46,7 +46,6 @@
 - **排程頻率跟文案不一致**：cron 寫每 3 小時，GitHub 實際約 5～7 小時一次，首頁卻寫「每 3 小時更新」。
   用外部 cron（例如 cron-job.org）觸發 `workflow_dispatch`，還是改文案？
 - **線上 AI 建議是關的**（`USE_LLM: "false"`，也沒有 `ANTHROPIC_API_KEY` secret）。要開會花錢。
-- **`tools/dive-shots/shoot.mjs`** 的功能已被 `verify-visual --probe` 取代，要刪還是留？（`flashpair.mjs`、`closeup.mjs` 是專案專用，保留。）
 - 首頁 0～40m 做得更精緻（小琉球綠蠵龜、綠島礁岩、台灣真實魚種）；深海段要不要縮短**沒有定案**，不要自己改 `depth.ts` 的捲動節奏。
 
 ## 已知還不夠好（`creature-realism`）
