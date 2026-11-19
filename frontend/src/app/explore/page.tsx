@@ -1,9 +1,13 @@
+import Link from "next/link";
+import BestDays from "@/components/BestDays";
 import HeroWaves from "@/components/HeroWaves";
 import HomeExplorer from "@/components/HomeExplorer";
 import Freshness from "@/components/Freshness";
 import RefreshButton from "@/components/RefreshButton";
 import { getLocations } from "@/lib/api";
-import { ACTIVITY_KIND_ZH, parseActivity, ratingFor, supportsActivity } from "@/lib/sea";
+import { collectDates } from "@/lib/bestDay";
+import { todayInTaipei } from "@/lib/format";
+import { ACTIVITY_KIND_ZH, type ActivityKind, parseActivity, ratingFor, supportsActivity } from "@/lib/sea";
 import type { Location } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +16,38 @@ const HEADING_ZH = {
   dive: "今天，哪裡適合潛水？",
   surf: "今天，哪裡適合衝浪？",
 } as const;
+
+type View = "today" | "week";
+
+function parseView(raw: string | undefined): View {
+  return raw === "week" ? "week" : "today";
+}
+
+function ViewToggle({ view, activity, n }: { view: View; activity: ActivityKind; n: number }) {
+  const items: [View, string, string][] = [
+    ["today", "今天", `/explore?activity=${activity}`],
+    ["week", `未來 ${n} 天`, `/explore?activity=${activity}&view=week`],
+  ];
+  return (
+    <nav aria-label="檢視" className="inline-flex rounded-full border border-ocean-100 bg-sand-100 p-0.5">
+      {items.map(([v, label, href]) => {
+        const on = v === view;
+        return (
+          <Link
+            key={v}
+            href={href}
+            aria-current={on ? "page" : undefined}
+            className={`inline-flex min-h-11 min-w-[88px] items-center justify-center rounded-full px-4 text-sm font-semibold outline-none transition-colors motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-ocean-600 focus-visible:ring-offset-1 ${
+              on ? "bg-white text-ocean-700 shadow-sm" : "text-slate-600 hover:text-slate-800"
+            }`}
+          >
+            {label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
 
 function todayLabel(): string {
   return new Intl.DateTimeFormat("zh-TW", {
@@ -25,9 +61,10 @@ function todayLabel(): string {
 export default async function ExplorePage({
   searchParams,
 }: {
-  searchParams: { activity?: string };
+  searchParams: { activity?: string; view?: string };
 }) {
   const activity = parseActivity(searchParams.activity);
+  const view = parseView(searchParams.view);
 
   let locations: Location[] = [];
   let error: string | null = null;
@@ -48,6 +85,8 @@ export default async function ExplorePage({
     .filter((v): v is string => !!v)
     .sort()
     .pop();
+  // 週檢視的天數 N：依實際有資料的天數（目前後端給 4 天）
+  const n = collectDates(rel, todayInTaipei()).length;
 
   return (
     <main className="mx-auto max-w-[88rem] space-y-6">
@@ -57,10 +96,12 @@ export default async function ExplorePage({
           <div className="min-w-0">
             <p className="text-sm font-semibold tracking-wide text-lagoon-300">{todayLabel()}</p>
             <h1 className="mt-1.5 text-[1.85rem] font-extrabold leading-tight tracking-tight min-[400px]:text-4xl sm:text-5xl lg:text-6xl">
-              {HEADING_ZH[activity]}
+              {view === "week" ? `未來 ${n} 天，哪天適合${ACTIVITY_KIND_ZH[activity]}？` : HEADING_ZH[activity]}
             </h1>
             <p className="mt-3 max-w-lg text-sm leading-relaxed text-white/85 sm:text-base">
-              台灣潛點與衝浪點的今日海況燈號。點地圖上的標記看預覽，再點一次直接進詳情；也可以從清單挑一個。
+              {view === "week"
+                ? "依每天的預報燈號排出最適合出發的日子。越後面的日子預報越不準，出發前一天再回來看一次。"
+                : "台灣潛點與衝浪點的今日海況燈號。點地圖上的標記看預覽，再點一次直接進詳情；也可以從清單挑一個。"}
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
               <RefreshButton tone="dark" />
@@ -68,7 +109,7 @@ export default async function ExplorePage({
             </div>
           </div>
 
-          {!error && rel.length > 0 && (
+          {view === "today" && !error && rel.length > 0 && (
             <div className="rounded-2xl bg-white/10 px-6 py-4 ring-1 ring-white/20 backdrop-blur md:min-w-[17rem]">
               <p className="flex items-baseline gap-2">
                 <span className="text-7xl font-extrabold leading-none tabular-nums sm:text-8xl">{green}</span>
@@ -95,6 +136,8 @@ export default async function ExplorePage({
         <HeroWaves />
       </header>
 
+      <ViewToggle view={view} activity={activity} n={n} />
+
       {error ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
           載入失敗：{error}
@@ -105,7 +148,11 @@ export default async function ExplorePage({
           目前沒有海況資料，按上方「重新抓海況」抓一次。
         </div>
       ) : (
-        <HomeExplorer locations={locations} activity={activity} />
+        view === "week" ? (
+          <BestDays locations={locations} activity={activity} latest={latest} />
+        ) : (
+          <HomeExplorer locations={locations} activity={activity} />
+        )
       )}
     </main>
   );

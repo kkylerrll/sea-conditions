@@ -118,6 +118,21 @@ export function reasonsFor(c: Condition | null | undefined, kind: ActivityKind):
   return c?.ratings?.[kind]?.reasons ?? c?.rating_reasons ?? [];
 }
 
+/* ---------- 地區分組 ----------
+   後端 region 是「縣市 · 區域」自由字串（例：屏東 · 離島、臺東 · 東河一帶、
+   基隆 · 新北 · 北海岸），沒有結構化欄位，所以用關鍵字推導。 */
+
+export type RegionGroup = "北部" | "東部" | "南部" | "離島";
+export const GROUP_ORDER: RegionGroup[] = ["北部", "東部", "南部", "離島"];
+
+export function regionGroup(region: string): RegionGroup | null {
+  if (/離島|澎湖/.test(region)) return "離島";
+  if (/基隆|新北|台北|臺北|桃園|新竹|苗栗/.test(region)) return "北部";
+  if (/宜蘭|花蓮|臺東|台東/.test(region)) return "東部";
+  if (/屏東|高雄|臺南|台南|嘉義/.test(region)) return "南部";
+  return null;
+}
+
 /* ---------- 防寒衣建議（依水溫，潛水用） ---------- */
 
 export function wetsuitAdvice(tempC: number | null | undefined): { suit: string; note: string } {

@@ -7,7 +7,10 @@ import { MiniSlots } from "@/components/SlotTimeline";
 import {
   ACTIVITY_KIND_ZH,
   type ActivityKind,
+  GROUP_ORDER,
   RATING_HEX,
+  type RegionGroup,
+  regionGroup,
   RATING_SHORT,
   ratingFor,
   supportsActivity,
@@ -28,20 +31,6 @@ function fmt(v: number | null | undefined, unit: string) {
   return v == null ? "—" : `${v}${unit}`;
 }
 
-/* ---------- 地區分組 ----------
-   後端 region 是「縣市 · 區域」自由字串（例：屏東 · 離島、臺東 · 東河一帶、
-   基隆 · 新北 · 北海岸），沒有結構化欄位，所以用關鍵字推導。 */
-
-type RegionGroup = "北部" | "東部" | "南部" | "離島";
-const GROUP_ORDER: RegionGroup[] = ["北部", "東部", "南部", "離島"];
-
-function regionGroup(region: string): RegionGroup | null {
-  if (/離島|澎湖/.test(region)) return "離島";
-  if (/基隆|新北|台北|臺北|桃園|新竹|苗栗/.test(region)) return "北部";
-  if (/宜蘭|花蓮|臺東|台東/.test(region)) return "東部";
-  if (/屏東|高雄|臺南|台南|嘉義/.test(region)) return "南部";
-  return null;
-}
 
 type Filter = "全部" | "適合" | RegionGroup;
 const FILTERS: Filter[] = ["全部", "適合", ...GROUP_ORDER];
