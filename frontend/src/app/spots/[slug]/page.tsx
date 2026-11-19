@@ -1,13 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import FavoriteButton from "@/components/FavoriteButton";
 import ForecastStrip from "@/components/ForecastStrip";
 import Freshness from "@/components/Freshness";
 import HeroWaves from "@/components/HeroWaves";
 import LiveCams from "@/components/LiveCams";
+import { ReportHeroButton, ReportHeroCount } from "@/components/ReportHeroLinks";
+import ReportsSection from "@/components/ReportsSection";
 import { TempGauge, TideCurve, WindCompass } from "@/components/SeaVisuals";
 import SlotTimeline from "@/components/SlotTimeline";
 import SpotList from "@/components/SpotList";
-import { getLocation } from "@/lib/api";
+import { getLocation, getReports } from "@/lib/api";
 import { updatedLabel } from "@/lib/format";
 import { directionsUrl } from "@/lib/nav";
 import {
@@ -31,13 +34,16 @@ export default async function SpotPage({
   params: { slug: string };
   searchParams: { activity?: string };
 }) {
-  let location;
-  try {
-    location = await getLocation(params.slug);
-  } catch {
-    notFound();
-  }
-  if (!location) notFound();
+  // 回報讀不到不影響整頁：失敗傳 null，區塊自己顯示錯誤狀態
+  const [locRes, reports] = await Promise.all([
+    getLocation(params.slug).then(
+      (v) => v,
+      () => null,
+    ),
+    getReports(params.slug).catch(() => null),
+  ]);
+  if (!locRes) notFound();
+  const location = locRes;
 
   const today = location.forecast[0] ?? location.today ?? null;
   const rest = location.forecast.slice(1);
@@ -59,16 +65,20 @@ export default async function SpotPage({
       {/* ───────── Hero：地名 + 判定 + 三塊視覺（羅盤／水溫／潮汐） ───────── */}
       <section aria-labelledby="spot-title">
         <div className="hero-ocean relative overflow-hidden rounded-[1.75rem] px-5 pb-20 pt-5 text-white shadow-lift sm:px-9 sm:pb-24 sm:pt-7">
-          {/* 返回：帶著 activity 回去，否則從衝浪地圖點進來、按返回會掉回潛水模式 */}
-          <Link
-            href={`/explore?activity=${selected}`}
-            className="inline-flex min-h-11 items-center gap-1 rounded-full bg-white/12 py-1 pl-2.5 pr-4 text-sm font-medium text-white outline-none ring-1 ring-white/25 backdrop-blur transition hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white"
-          >
-            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <path d="M12 5l-5 5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            回地圖
-          </Link>
+          <div className="flex items-center justify-between gap-2">
+            {/* 返回：帶著 activity 回去，否則從衝浪地圖點進來、按返回會掉回潛水模式 */}
+            <Link
+              href={`/explore?activity=${selected}`}
+              className="inline-flex min-h-11 items-center gap-1 rounded-full bg-white/12 py-1 pl-2.5 pr-4 text-sm font-medium text-white outline-none ring-1 ring-white/25 backdrop-blur transition hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white"
+            >
+              <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path d="M12 5l-5 5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              回地圖
+            </Link>
+            <FavoriteButton slug={location.slug} name={location.name} tone="dark" withLabel className="hidden sm:inline-flex" />
+            <FavoriteButton slug={location.slug} name={location.name} tone="dark" className="sm:hidden" />
+          </div>
 
           <div className="mt-5 grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
             <div className="min-w-0">
@@ -112,14 +122,16 @@ export default async function SpotPage({
                   href={directionsUrl(location.lat, location.lon)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-coral-400 px-5 py-1.5 text-sm font-bold text-white outline-none transition hover:bg-[#e66a4d] focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-abyss-700"
+                  className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-coral-700 px-5 py-1.5 text-sm font-bold text-white outline-none transition hover:bg-[#a03b25] focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-abyss-700"
                 >
                   <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                     <path d="M10 2C6.7 2 4 4.7 4 8c0 4.2 5.3 9.4 5.6 9.7a.6.6 0 0 0 .8 0C10.7 17.4 16 12.2 16 8c0-3.3-2.7-6-6-6Zm0 8.2A2.2 2.2 0 1 1 10 5.8a2.2 2.2 0 0 1 0 4.4Z" />
                   </svg>
                   用 Google 地圖導航
                 </a>
+                {today && <ReportHeroButton />}
                 {today && <Freshness iso={today.fetched_at} tone="dark" />}
+                {today && reports && reports.count > 0 && <ReportHeroCount count={reports.count} />}
               </div>
             </div>
 
@@ -163,9 +175,19 @@ export default async function SpotPage({
       </section>
 
       {!today ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          目前沒有海況資料，請回首頁按「重新抓海況」。
-        </div>
+        <>
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            目前沒有海況資料，請回首頁按「重新抓海況」。
+          </div>
+          <ReportsSection
+            slug={location.slug}
+            name={location.name}
+            activities={location.activities}
+            defaultActivity={primary}
+            summary={reports}
+            forecastVisibility={null}
+          />
+        </>
       ) : (
         <>
           {today.slots && today.slots.length > 0 && (
@@ -197,6 +219,15 @@ export default async function SpotPage({
               </div>
             </section>
           )}
+
+          <ReportsSection
+            slug={location.slug}
+            name={location.name}
+            activities={location.activities}
+            defaultActivity={primary}
+            summary={reports}
+            forecastVisibility={today.visibility_m}
+          />
 
           <ForecastStrip days={rest} activity={primary} activities={location.activities} />
 

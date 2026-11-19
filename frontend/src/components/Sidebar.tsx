@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef } from "react";
 import type { RefObject } from "react";
+import { StarIcon } from "@/components/FavoriteButton";
+import { useFavorites } from "@/lib/favorites";
 import { ACTIVITY_KIND_ZH, type ActivityKind, RATING_HEX, ratingFor, supportsActivity } from "@/lib/sea";
 import type { Location } from "@/lib/types";
 
@@ -84,10 +86,13 @@ function RegionList({
   onNavigate?: () => void;
 }) {
   const visible = locations.filter((loc) => supportsActivity(loc.activities, activity));
+  const fav = useFavorites();
+  const favs = fav.ready ? visible.filter((l) => fav.has(l.slug)) : [];
+  const others = favs.length ? visible.filter((l) => !fav.has(l.slug)) : visible;
 
-  return (
-    <ul className="space-y-0.5">
-      {visible.map((loc) => {
+  const list = (items: Location[], label?: string) => (
+    <ul className="space-y-0.5" aria-label={label}>
+      {items.map((loc) => {
         const c = RATING_HEX[ratingFor(loc.today, activity)];
         const href = `/spots/${loc.slug}`;
         const active = pathname === href;
@@ -124,6 +129,32 @@ function RegionList({
         );
       })}
     </ul>
+  );
+
+  // 沒有收藏：維持原樣
+  if (favs.length === 0) return list(visible);
+
+  // 收合（窄圖示列）：不分段，收藏排前面，中間一條分隔線
+  if (collapsed) {
+    return (
+      <>
+        {list(favs, "收藏的地區")}
+        <div className="my-1 border-t border-slate-100" aria-hidden="true" />
+        {list(others, "其他地區")}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <p className="flex items-center gap-1 px-3 pb-1 pt-2 text-xs font-semibold text-slate-500">
+        <StarIcon on tone="light" size={12} />
+        收藏
+      </p>
+      {list(favs, "收藏的地區")}
+      <p className="px-3 pb-1 pt-2 text-xs font-semibold text-slate-500">其他</p>
+      {list(others, "其他地區")}
+    </>
   );
 }
 

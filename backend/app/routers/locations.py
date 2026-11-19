@@ -1,15 +1,28 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from ..config import settings
 from ..db import get_db
-from ..models import DailyCondition, Location
-from ..schemas import ConditionOut, LocationWithConditions, SpotOut
-from ..tz import today_taipei
+from ..models import DailyCondition, Location, Report
+from ..schemas import (
+    ConditionOut,
+    FeelingCounts,
+    LocationWithConditions,
+    ReportIn,
+    ReportOut,
+    ReportSummary,
+    SpotOut,
+)
+from ..tz import TAIPEI, now_taipei, today_taipei
+
+DAILY_REPORT_LIMIT = 5
 
 router = APIRouter(prefix="/api", tags=["locations"])
 
@@ -58,3 +71,116 @@ def get_location(slug: str, db: Session = Depends(get_db)):
     if loc is None:
         raise HTTPException(status_code=404, detail="找不到這個潛點")
     return _build(loc, today)
+
+
+# ───────────── 使用者實測回報 ─────────────
+
+
+def _client_ip(request: Request) -> str:
+    """Render 前面有 Cloudflare：X-Forwarded-For 第一個值可偽造，不採用。
+
+    依序取 True-Client-IP、CF-Connecting-IP，最後才用連線來源。
+    """
+    for name in ("true-client-ip", "cf-connecting-ip"):
+        v = (request.headers.get(name) or "").strip()
+        if v:
+            return v
+    return request.client.host if request.client else "unknown"
+
+
+def _supports_activity(activities, kind: str) -> bool:
+    """同前端 lib/sea.ts supportsActivity：潛水看 scuba/freedive/snorkel，衝浪看 surf。"""
+    acts = activities or []
+    if kind == "surf":
+        return "surf" in acts
+    return any(a in ("scuba", "freedive", "snorkel") for a in acts)
+
+
+def _ip_hash(ip: str) -> str:
+    return hashlib.sha256((ip + settings.report_salt).encode("utf-8")).hexdigest()
+
+
+def _get_location(db: Session, slug: str) -> Location:
+    loc = db.scalar(select(Location).where(Location.slug == slug))
+    if loc is None:
+        raise HTTPException(status_code=404, detail="找不到這個潛點")
+    return loc
+
+
+@router.post("/locations/{slug}/reports", response_model=ReportOut, status_code=201)
+def create_report(slug: str, body: ReportIn, request: Request, db: Session = Depends(get_db)):
+    loc = _get_location(db, slug)
+    if not _supports_activity(loc.activities, body.activity):
+        raise HTTPException(status_code=422, detail="這個地區不支援這項活動的回報")
+    ip_hash = _ip_hash(_client_ip(request))
+
+    dup = db.scalar(
+        select(func.count())
+        .select_from(Report)
+        .where(
+            Report.ip_hash == ip_hash,
+            Report.location_id == loc.id,
+            Report.date == body.date,
+            Report.activity == body.activity,
+        )
+    )
+    if dup:
+        raise HTTPException(status_code=409, detail="你已經回報過這個地區這一天的這項活動了")
+
+    # 台灣當日 00:00 起算（created_at 一律存 UTC）
+    day_start = (
+        dt.datetime.combine(now_taipei().date(), dt.time.min, tzinfo=TAIPEI)
+        .astimezone(dt.timezone.utc)
+    )
+    sent_today = db.scalar(
+        select(func.count())
+        .select_from(Report)
+        .where(Report.ip_hash == ip_hash, Report.created_at >= day_start)
+    )
+    if (sent_today or 0) >= DAILY_REPORT_LIMIT:
+        raise HTTPException(status_code=429, detail="今天回報太多次了，明天再來")
+
+    report = Report(
+        location_id=loc.id,
+        date=body.date,
+        activity=body.activity,
+        feeling=body.feeling,
+        visibility_m=body.visibility_m,
+        note=body.note,
+        ip_hash=ip_hash,
+        created_at=dt.datetime.now(dt.timezone.utc),
+    )
+    db.add(report)
+    try:
+        db.commit()
+    except IntegrityError:
+        # 兩個請求同時進來撞到唯一限制
+        db.rollback()
+        raise HTTPException(status_code=409, detail="你已經回報過這個地區這一天的這項活動了") from None
+    return ReportOut.model_validate(report)
+
+
+@router.get("/locations/{slug}/reports", response_model=ReportSummary)
+def get_reports(
+    slug: str,
+    days: int = Query(7, ge=1, le=30),
+    db: Session = Depends(get_db),
+):
+    loc = _get_location(db, slug)
+    since = today_taipei() - dt.timedelta(days=days - 1)
+    rows = db.scalars(
+        select(Report)
+        .where(Report.location_id == loc.id, Report.date >= since)
+        .order_by(Report.created_at.desc(), Report.id.desc())
+    ).all()
+
+    counts = FeelingCounts()
+    for r in rows:
+        setattr(counts, r.feeling, getattr(counts, r.feeling) + 1)
+    vis = [r.visibility_m for r in rows if r.visibility_m is not None]
+    return ReportSummary(
+        count=len(rows),
+        by_feeling=counts,
+        avg_visibility_m=round(sum(vis) / len(vis), 1) if vis else None,
+        recent=[ReportOut.model_validate(r) for r in rows[:10]],
+    )

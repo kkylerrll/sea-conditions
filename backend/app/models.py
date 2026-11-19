@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -60,7 +61,6 @@ class Location(Base):
 
     # --- 之後預留 ---
     # comments          心得留言（純文字 + 照片，依讚數排序）
-    # condition_reports 使用者實測海況回報，用來校正 AI 建議
 
 
 class Spot(Base):
@@ -144,3 +144,28 @@ class DailyCondition(Base):
     raw: Mapped[Optional[dict]] = mapped_column(JSON)  # 原始 API payload，方便除錯與日後校正
 
     location: Mapped[Location] = relationship(back_populates="conditions")
+
+
+class Report(Base):
+    """使用者實測回報：今天下水了，實際體感好／普通／差，能見度約幾公尺。
+    不存原始 IP，只存 sha256(ip + salt) 做防濫用（同人同日同地區同活動只能一筆、每日上限）。"""
+
+    __tablename__ = "reports"
+    __table_args__ = (
+        UniqueConstraint("ip_hash", "location_id", "date", "activity", name="uq_report_ip_loc_date_activity"),
+        Index("ix_reports_ip_hash_created_at", "ip_hash", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    location_id: Mapped[int] = mapped_column(
+        ForeignKey("locations.id", ondelete="CASCADE"), index=True
+    )
+    date: Mapped[dt.date] = mapped_column(Date, index=True)  # 台灣日期
+    activity: Mapped[str] = mapped_column(String(8))          # dive | surf
+    feeling: Mapped[str] = mapped_column(String(8))           # good | ok | bad
+    visibility_m: Mapped[Optional[int]] = mapped_column(Integer)
+    note: Mapped[Optional[str]] = mapped_column(String(140))
+    ip_hash: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    location: Mapped[Location] = relationship()

@@ -1,0 +1,138 @@
+{
+ "success": "true",
+ "result": {
+  "resource_id": "F-A0021-001",
+  "fields": [
+   {
+    "id": "LocationName",
+    "type": "String"
+   },
+   {
+    "id": "LocationId",
+    "type": "String"
+   },
+   {
+    "id": "Latitude",
+    "type": "Double"
+   },
+   {
+    "id": "Longitude",
+    "type": "Double"
+   },
+   {
+    "id": "Date",
+    "type": "Date"
+   },
+   {
+    "id": "LunarDate",
+    "type": "Date"
+   },
+   {
+    "id": "TideRange",
+    "type": "String"
+   },
+   {
+    "id": "DateTime",
+    "type": "DateTime"
+   },
+   {
+    "id": "AboveTWVD",
+    "type": "String"
+   },
+   {
+    "id": "AboveLocalMSL",
+    "type": "Integer"
+   },
+   {
+    "id": "AboveChartDatum",
+    "type": "Integer"
+   }
+  ]
+ },
+ "records": {
+  "dataid": "F-A0021-001",
+  "note": "潮汐預報(未來1個月潮汐預報，鄉鎮、大潮小潮、滿潮乾潮、時間、潮高)",
+  "TideForecasts": [
+   {
+    "Location": {
+     "LocationId": "10017010",
+     "LocationName": "基隆市中正區",
+     "Latitude": "25.15060",
+     "Longitude": "121.79000",
+     "TimePeriods": {
+      "Daily": [
+       {
+        "Date": "2026-11-20",
+        "LunarDate": "2026-10-12",
+        "TideRange": "小",
+        "Time": [
+         {
+          "DateTime": "2026-11-20T06:03:00+08:00",
+          "Tide": "滿潮",
+          "TideHeights": {
+           "AboveTWVD": "26",
+           "AboveLocalMSL": 13,
+           "AboveChartDatum": 115
+          }
+         },
+         {
+          "DateTime": "2026-11-20T11:17:00+08:00",
+          "Tide": "乾潮",
+          "TideHeights": {
+           "AboveTWVD": "-16",
+           "AboveLocalMSL": -29,
+           "AboveChartDatum": 73
+          }
+         },
+         {
+          "DateTime": "2026-11-20T17:59:00+08:00",
+          "Tide": "滿潮",
+          "TideHeights": {
+           "AboveTWVD": "42",
+           "AboveLocalMSL": 29,
+           "AboveChartDatum": 131
+          }
+         }
+        ]
+       },
+       {
+        "Date": "2026-12-04",
+        "LunarDate": "2026-10-26",
+        "TideRange": "小",
+        "Time": [
+         {
+          "DateTime": "2026-12-04T06:31:00+08:00",
+          "Tide": "滿潮",
+          "TideHeights": {
+           "AboveTWVD": "25",
+           "AboveLocalMSL": 12,
+           "AboveChartDatum": 114
+          }
+         },
+         {
+          "DateTime": "2026-12-04T11:44:00+08:00",
+          "Tide": "乾潮",
+          "TideHeights": {
+           "AboveTWVD": "-12",
+           "AboveLocalMSL": -24,
+           "AboveChartDatum": 77
+          }
+         },
+         {
+          "DateTime": "2026-12-04T18:04:00+08:00",
+          "Tide": "滿潮",
+          "TideHeights": {
+           "AboveTWVD": "29",
+           "AboveLocalMSL": 15,
+           "AboveChartDatum": 117
+          }
+         }
+        ]
+       }
+      ]
+     }
+    }
+   }
+  ]
+ }
+}

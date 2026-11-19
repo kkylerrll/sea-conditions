@@ -86,3 +86,32 @@ export interface Location {
   forecast: Condition[];
   spot_list?: Spot[];
 }
+
+/* ---------- 使用者實測回報（P1） ---------- */
+
+export type ReportFeeling = "good" | "ok" | "bad";
+export type ReportActivity = "dive" | "surf";
+
+export interface ReportItem {
+  date: string; // YYYY-MM-DD（台灣日期）
+  activity: ReportActivity;
+  feeling: ReportFeeling;
+  visibility_m: number | null;
+  note: string | null;
+  created_at: string;
+}
+
+export interface ReportSummary {
+  count: number;
+  by_feeling: Record<ReportFeeling, number>;
+  avg_visibility_m: number | null;
+  recent: ReportItem[]; // 最多 10 筆，新到舊
+}
+
+export interface ReportInput {
+  date: string;
+  activity: ReportActivity;
+  feeling: ReportFeeling;
+  visibility_m?: number;
+  note?: string;
+}

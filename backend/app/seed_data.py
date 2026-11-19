@@ -95,7 +95,7 @@ LOCATIONS: list[dict] = [
         "lat": 25.200,
         "lon": 121.650,
         "cwa_marine_zone": "臺灣北部海面",
-        "cwa_tide_station": "基隆市",
+        "cwa_tide_station": "基隆市中正區",
     },
     {
         "slug": "penghu",
@@ -186,7 +186,7 @@ LOCATIONS: list[dict] = [
         "lat": 22.607,
         "lon": 120.269,
         "cwa_marine_zone": "臺灣海峽南部",
-        "cwa_tide_station": "高雄市",
+        "cwa_tide_station": "高雄市旗津區",
     },
 ]
 

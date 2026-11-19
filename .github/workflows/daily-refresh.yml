@@ -13,6 +13,10 @@ name: 定時更新海況（每 3 小時）
 #   DATABASE_URL  Supabase「Connection pooling」連線字串（postgresql+psycopg://...pooler.supabase.com...?sslmode=require）
 #                 ⚠️ 必須用 pooler，不能用 db.<ref>.supabase.co 直連：直連只有 IPv6，GitHub runner 沒有 IPv6。
 #   CWA_API_KEY   中央氣象署金鑰（潮汐用；沒設只會少潮汐，不會失敗）
+#
+# 觸發方式：主要靠外部 cron（cron-job.org 每 3 小時呼叫 workflow_dispatch API，設定步驟見
+# docs/runbooks/external-cron.md）。GitHub 的 schedule 在免費帳號上會延遲或跳過，不保證準時，
+# 所以下面的 schedule 只當備援保留；兩邊同時觸發時只是多寫一次相同資料（upsert），沒有副作用。
 on:
   schedule:
     - cron: "0 */3 * * *"
