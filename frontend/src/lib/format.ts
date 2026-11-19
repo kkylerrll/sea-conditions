@@ -43,3 +43,20 @@ export function freshness(iso: string | null | undefined): { time: string; stale
     stale: Date.now() - d.getTime() > 6 * 3600 * 1000,
   };
 }
+
+const WEEKDAY_ZH = ["日", "一", "二", "三", "四", "五", "六"];
+
+/** YYYY-MM-DD → 「11/16（一）」。日期字串本身就是台灣日期，不做時區換算。 */
+export function shortDateLabel(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return `${m}/${d}（${WEEKDAY_ZH[wd]}）`;
+}
+
+/** 相對今天（台灣）：「今天」「昨天」「明天」，其他回 null。 */
+export function relativeDayWord(iso: string, today: string = todayInTaipei()): string | null {
+  if (iso === today) return "今天";
+  if (iso === isoPlusDays(today, -1)) return "昨天";
+  if (iso === isoPlusDays(today, 1)) return "明天";
+  return null;
+}

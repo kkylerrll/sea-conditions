@@ -4,10 +4,12 @@ import ForecastStrip from "@/components/ForecastStrip";
 import Freshness from "@/components/Freshness";
 import HeroWaves from "@/components/HeroWaves";
 import LiveCams from "@/components/LiveCams";
+import { ReportHeroButton, ReportHeroCount } from "@/components/ReportHeroLinks";
+import ReportsSection from "@/components/ReportsSection";
 import { TempGauge, TideCurve, WindCompass } from "@/components/SeaVisuals";
 import SlotTimeline from "@/components/SlotTimeline";
 import SpotList from "@/components/SpotList";
-import { getLocation } from "@/lib/api";
+import { getLocation, getReports } from "@/lib/api";
 import { updatedLabel } from "@/lib/format";
 import { directionsUrl } from "@/lib/nav";
 import {
@@ -31,13 +33,16 @@ export default async function SpotPage({
   params: { slug: string };
   searchParams: { activity?: string };
 }) {
-  let location;
-  try {
-    location = await getLocation(params.slug);
-  } catch {
-    notFound();
-  }
-  if (!location) notFound();
+  // 回報讀不到不影響整頁：失敗傳 null，區塊自己顯示錯誤狀態
+  const [locRes, reports] = await Promise.all([
+    getLocation(params.slug).then(
+      (v) => v,
+      () => null,
+    ),
+    getReports(params.slug).catch(() => null),
+  ]);
+  if (!locRes) notFound();
+  const location = locRes;
 
   const today = location.forecast[0] ?? location.today ?? null;
   const rest = location.forecast.slice(1);
@@ -119,7 +124,9 @@ export default async function SpotPage({
                   </svg>
                   用 Google 地圖導航
                 </a>
+                {today && <ReportHeroButton />}
                 {today && <Freshness iso={today.fetched_at} tone="dark" />}
+                {today && reports && reports.count > 0 && <ReportHeroCount count={reports.count} />}
               </div>
             </div>
 
@@ -163,9 +170,19 @@ export default async function SpotPage({
       </section>
 
       {!today ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          目前沒有海況資料，請回首頁按「重新抓海況」。
-        </div>
+        <>
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            目前沒有海況資料，請回首頁按「重新抓海況」。
+          </div>
+          <ReportsSection
+            slug={location.slug}
+            name={location.name}
+            activities={location.activities}
+            defaultActivity={primary}
+            summary={reports}
+            forecastVisibility={null}
+          />
+        </>
       ) : (
         <>
           {today.slots && today.slots.length > 0 && (
@@ -197,6 +214,15 @@ export default async function SpotPage({
               </div>
             </section>
           )}
+
+          <ReportsSection
+            slug={location.slug}
+            name={location.name}
+            activities={location.activities}
+            defaultActivity={primary}
+            summary={reports}
+            forecastVisibility={today.visibility_m}
+          />
 
           <ForecastStrip days={rest} activity={primary} activities={location.activities} />
 
