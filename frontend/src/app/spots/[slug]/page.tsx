@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import FavoriteButton from "@/components/FavoriteButton";
 import ForecastStrip from "@/components/ForecastStrip";
 import Freshness from "@/components/Freshness";
 import HeroWaves from "@/components/HeroWaves";
@@ -64,16 +65,20 @@ export default async function SpotPage({
       {/* ───────── Hero：地名 + 判定 + 三塊視覺（羅盤／水溫／潮汐） ───────── */}
       <section aria-labelledby="spot-title">
         <div className="hero-ocean relative overflow-hidden rounded-[1.75rem] px-5 pb-20 pt-5 text-white shadow-lift sm:px-9 sm:pb-24 sm:pt-7">
-          {/* 返回：帶著 activity 回去，否則從衝浪地圖點進來、按返回會掉回潛水模式 */}
-          <Link
-            href={`/explore?activity=${selected}`}
-            className="inline-flex min-h-11 items-center gap-1 rounded-full bg-white/12 py-1 pl-2.5 pr-4 text-sm font-medium text-white outline-none ring-1 ring-white/25 backdrop-blur transition hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white"
-          >
-            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <path d="M12 5l-5 5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            回地圖
-          </Link>
+          <div className="flex items-center justify-between gap-2">
+            {/* 返回：帶著 activity 回去，否則從衝浪地圖點進來、按返回會掉回潛水模式 */}
+            <Link
+              href={`/explore?activity=${selected}`}
+              className="inline-flex min-h-11 items-center gap-1 rounded-full bg-white/12 py-1 pl-2.5 pr-4 text-sm font-medium text-white outline-none ring-1 ring-white/25 backdrop-blur transition hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white"
+            >
+              <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path d="M12 5l-5 5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              回地圖
+            </Link>
+            <FavoriteButton slug={location.slug} name={location.name} tone="dark" withLabel className="hidden sm:inline-flex" />
+            <FavoriteButton slug={location.slug} name={location.name} tone="dark" className="sm:hidden" />
+          </div>
 
           <div className="mt-5 grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
             <div className="min-w-0">

@@ -3,9 +3,11 @@
 // /explore?view=week：未來 N 天哪天最適合（docs/design/best-day.md）。
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Freshness from "@/components/Freshness";
+import FavoritesEmpty from "@/components/FavoritesEmpty";
 import { bestDay, cellFor, collectDates, dayStats, sortRows, type DayStat } from "@/lib/bestDay";
+import { favoritesFilterRemembered, rememberFavoritesFilter, useFavorites } from "@/lib/favorites";
 import { relativeDayWord, shortDateLabel, todayInTaipei } from "@/lib/format";
 import {
   ACTIVITY_KIND_ZH,
@@ -59,24 +61,27 @@ export default function BestDays({
   locations,
   activity,
   latest,
-  filterSlot,
 }: {
   locations: Location[];
   activity: ActivityKind;
   latest: string | null | undefined;
-  /** P3：額外的篩選（例如「收藏」），由外層注入；回傳 null 表示不套用 */
-  filterSlot?: {
-    label: string;
-    active: boolean;
-    onSelect: () => void;
-    apply: (locs: Location[]) => Location[];
-    emptyState: React.ReactNode;
-  };
 }) {
   const today = todayInTaipei();
   const actZh = ACTIVITY_KIND_ZH[activity];
   const [filter, setFilter] = useState<WeekFilter>("全部");
+  const [favOn, setFavOn] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
+  const allChipRef = useRef<HTMLButtonElement | null>(null);
+  const fav = useFavorites();
+
+  // 跟今天檢視共用「只看收藏」的記憶
+  useEffect(() => {
+    if (fav.ready && favoritesFilterRemembered() && fav.slugs.length > 0) setFavOn(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fav.ready]);
+
+  const favCount = fav.ready ? fav.slugs.length : 0;
+  const favSet = useMemo(() => new Set(fav.slugs), [fav.slugs]);
 
   const supported = useMemo(
     () => locations.filter((l) => supportsActivity(l.activities, activity)),
@@ -86,25 +91,42 @@ export default function BestDays({
   const dates = useMemo(() => collectDates(supported, today), [supported, today]);
   const n = dates.length;
 
-  const extraActive = filterSlot?.active ?? false;
   const rows = useMemo(() => {
-    if (extraActive && filterSlot) return filterSlot.apply(supported);
+    if (favOn) return supported.filter((l) => favSet.has(l.slug));
     if (filter === "全部") return supported;
     return supported.filter((l) => regionGroup(l.region) === filter);
-  }, [supported, filter, extraActive, filterSlot]);
+  }, [supported, filter, favOn, favSet]);
 
   const stats = useMemo(() => dayStats(rows, dates, activity), [rows, dates, activity]);
   const best = useMemo(() => bestDay(stats), [stats]);
   const selected = picked && dates.includes(picked) ? picked : best?.date ?? dates[0];
   const sorted = useMemo(() => (selected ? sortRows(rows, selected, activity) : rows), [rows, selected, activity]);
 
-  const regionName = extraActive && filterSlot ? filterSlot.label : filter === "全部" ? "全部區域" : filter;
+  const regionName = favOn ? "收藏" : filter === "全部" ? "全部區域" : filter;
   const allUnknown = stats.length > 0 && stats.every((s) => s.allUnknown);
 
   function chooseFilter(f: WeekFilter) {
     setFilter(f);
+    setFavOn(false);
     setPicked(null);
+    rememberFavoritesFilter(false);
   }
+
+  function chooseFavorites() {
+    setFavOn(true);
+    setPicked(null);
+    rememberFavoritesFilter(true);
+  }
+
+  function showAll() {
+    chooseFilter("全部");
+    requestAnimationFrame(() => allChipRef.current?.focus());
+  }
+
+  const chipCls = (on: boolean) =>
+    `min-h-11 shrink-0 cursor-pointer rounded-full px-4 text-sm font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-ocean-600 focus-visible:ring-offset-2 ${
+      on ? "bg-abyss-800 text-white shadow-soft" : "bg-white text-ocean-700 ring-1 ring-ocean-200 hover:bg-ocean-50"
+    }`;
 
   const chips = (
     <div
@@ -112,42 +134,29 @@ export default function BestDays({
       aria-label="篩選區域"
       className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 [&::-webkit-scrollbar]:hidden"
     >
-      {FILTERS.map((f, i) => {
-        const on = !extraActive && filter === f;
+      {FILTERS.map((f) => {
+        const on = !favOn && filter === f;
         const chip = (
           <button
             key={f}
+            ref={f === "全部" ? allChipRef : undefined}
             type="button"
             aria-pressed={on}
             onClick={() => chooseFilter(f)}
-            className={`min-h-11 shrink-0 cursor-pointer rounded-full px-4 text-sm font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-ocean-600 focus-visible:ring-offset-2 ${
-              on ? "bg-abyss-800 text-white shadow-soft" : "bg-white text-ocean-700 ring-1 ring-ocean-200 hover:bg-ocean-50"
-            }`}
+            className={chipCls(on)}
           >
             {f}
           </button>
         );
+        if (f !== "全部") return chip;
         // 「收藏」chip 接在「全部」後面
-        if (i === 0 && filterSlot) {
-          return [
-            chip,
-            <button
-              key="extra"
-              type="button"
-              aria-pressed={extraActive}
-              onClick={() => {
-                filterSlot.onSelect();
-                setPicked(null);
-              }}
-              className={`min-h-11 shrink-0 cursor-pointer rounded-full px-4 text-sm font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-ocean-600 focus-visible:ring-offset-2 ${
-                extraActive ? "bg-abyss-800 text-white shadow-soft" : "bg-white text-ocean-700 ring-1 ring-ocean-200 hover:bg-ocean-50"
-              }`}
-            >
-              {filterSlot.label}
-            </button>,
-          ];
-        }
-        return chip;
+        return [
+          chip,
+          <button key="收藏" type="button" aria-pressed={favOn} onClick={chooseFavorites} className={chipCls(favOn)}>
+            收藏
+            {favCount > 0 && <span className="tabular-nums"> {favCount}</span>}
+          </button>,
+        ];
       })}
     </div>
   );
@@ -160,12 +169,22 @@ export default function BestDays({
       </div>
     );
   } else if (rows.length === 0) {
-    body =
-      extraActive && filterSlot ? (
-        filterSlot.emptyState
-      ) : (
-        <p className="card-clean p-4 text-sm text-slate-600">這個區域沒有{actZh}地區，換一個區域看看。</p>
-      );
+    body = !favOn ? (
+      <p className="card-clean p-4 text-sm text-slate-600">這個區域沒有{actZh}地區，換一個區域看看。</p>
+    ) : favCount === 0 ? (
+      <FavoritesEmpty onShowAll={showAll} />
+    ) : (
+      <div className="card-clean p-4 text-sm text-slate-600">
+        <p>你收藏的地區都沒有{actZh}預報。</p>
+        <button
+          type="button"
+          onClick={showAll}
+          className="mt-3 inline-flex min-h-11 cursor-pointer items-center rounded-xl bg-white px-4 text-sm font-semibold text-ocean-700 outline-none ring-1 ring-ocean-200 transition hover:bg-ocean-50 focus-visible:ring-2 focus-visible:ring-ocean-600"
+        >
+          看全部地區
+        </button>
+      </div>
+    );
   } else {
     body = (
       <>

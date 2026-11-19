@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import FavoriteButton from "@/components/FavoriteButton";
+import FavoritesEmpty from "@/components/FavoritesEmpty";
 import { MiniSlots } from "@/components/SlotTimeline";
+import { favoritesFilterRemembered, rememberFavoritesFilter, useFavorites } from "@/lib/favorites";
 import {
   ACTIVITY_KIND_ZH,
   type ActivityKind,
@@ -32,8 +35,8 @@ function fmt(v: number | null | undefined, unit: string) {
 }
 
 
-type Filter = "全部" | "適合" | RegionGroup;
-const FILTERS: Filter[] = ["全部", "適合", ...GROUP_ORDER];
+type Filter = "全部" | "收藏" | "適合" | RegionGroup;
+const FILTERS: Filter[] = ["全部", "收藏", "適合", ...GROUP_ORDER];
 
 const RATING_ORDER: Record<Rating, number> = { green: 0, yellow: 1, red: 2, unknown: 3 };
 
@@ -48,6 +51,21 @@ export default function HomeExplorer({
   const [hovered, setHovered] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("全部");
   const mapRef = useRef<HTMLDivElement | null>(null);
+  const allChipRef = useRef<HTMLButtonElement | null>(null);
+  const fav = useFavorites();
+  const favSet = useMemo(() => new Set(fav.slugs), [fav.slugs]);
+
+  // 記住的「只看收藏」：收藏讀完、且還有收藏時才套用
+  useEffect(() => {
+    if (fav.ready && favoritesFilterRemembered() && fav.slugs.length > 0) setFilter("收藏");
+    // 只在收藏讀完的那一刻判斷一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fav.ready]);
+
+  function chooseFilter(f: Filter) {
+    setFilter(f);
+    rememberFavoritesFilter(f === "收藏");
+  }
 
   // 切換活動別時，先前選的點可能沒有新活動的預報，清掉避免顯示錯的燈號。
   useEffect(() => {
@@ -63,9 +81,15 @@ export default function HomeExplorer({
   // 清單：依燈號排序（適合 → 普通 → 不建議），同燈號維持後端順序；
   // 沒有這個活動預報的地區放最後，用「無預報」樣式，點了可看並切換活動。
   const shown = useMemo(() => {
-    const rest = filter === "全部" ? locations.filter((l) => !supportsActivity(l.activities, activity)) : [];
+    const rest =
+      filter === "全部"
+        ? locations.filter((l) => !supportsActivity(l.activities, activity))
+        : filter === "收藏"
+          ? locations.filter((l) => favSet.has(l.slug) && !supportsActivity(l.activities, activity))
+          : [];
     const main = visible.filter((loc) => {
       if (filter === "全部") return true;
+      if (filter === "收藏") return favSet.has(loc.slug);
       if (filter === "適合") return ratingFor(loc.today, activity) === "green";
       return regionGroup(loc.region) === filter;
     });
@@ -73,10 +97,13 @@ export default function HomeExplorer({
       (a, b) => RATING_ORDER[ratingFor(a.today, activity)] - RATING_ORDER[ratingFor(b.today, activity)],
     );
     return [...sorted, ...rest];
-  }, [visible, locations, filter, activity]);
+  }, [visible, locations, filter, activity, favSet]);
   const shownSlugs = new Set(shown.map((l) => l.slug));
   // 地圖：全部時維持原樣（含無預報的點）；篩選時只留符合的點
-  const mapLocations = filter === "全部" ? locations : locations.filter((l) => shownSlugs.has(l.slug));
+  // 收藏是空的時候地圖照樣顯示全部點，不要給一張空地圖
+  const favEmpty = filter === "收藏" && shown.length === 0;
+  const mapLocations =
+    filter === "全部" || favEmpty ? locations : locations.filter((l) => shownSlugs.has(l.slug));
 
   function selectFromList(slug: string) {
     setSelected(slug);
@@ -118,22 +145,36 @@ export default function HomeExplorer({
             return (
               <button
                 key={f}
+                ref={f === "全部" ? allChipRef : undefined}
                 type="button"
                 aria-pressed={on}
-                onClick={() => setFilter(f)}
+                onClick={() => chooseFilter(f)}
                 className={`min-h-10 shrink-0 cursor-pointer rounded-full px-4 text-sm font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-ocean-600 focus-visible:ring-offset-2 ${
                   on
                     ? "bg-abyss-800 text-white shadow-soft"
                     : "bg-white text-ocean-700 ring-1 ring-ocean-200 hover:bg-ocean-50"
                 }`}
               >
-                {f}
+                {f === "收藏" && fav.ready && fav.slugs.length > 0 ? (
+                  <>
+                    收藏 <span className="tabular-nums">{fav.slugs.length}</span>
+                  </>
+                ) : (
+                  f
+                )}
               </button>
             );
           })}
         </div>
 
-        {shown.length === 0 ? (
+        {favEmpty ? (
+          <FavoritesEmpty
+            onShowAll={() => {
+              chooseFilter("全部");
+              requestAnimationFrame(() => allChipRef.current?.focus());
+            }}
+          />
+        ) : shown.length === 0 ? (
           <p className="card-clean p-4 text-sm text-slate-600">這個篩選下沒有地點，換一個看看。</p>
         ) : (
           <ul className="space-y-3">
@@ -220,7 +261,7 @@ function SpotCard({
         onBlur={() => onHover(null)}
         className="block w-full cursor-pointer p-4 pb-3 pl-5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ocean-600"
       >
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex items-start justify-between gap-2 pr-10">
           <div className="min-w-0">
             <p className="truncate text-base font-bold text-slate-900">{loc.name}</p>
             <p className="truncate text-xs text-slate-600">{loc.region}</p>
@@ -249,6 +290,7 @@ function SpotCard({
           <p className="mt-2 text-xs text-slate-600">這裡是{ACTIVITY_KIND_ZH[kind]}點，上方燈號為{ACTIVITY_KIND_ZH[kind]}。</p>
         )}
       </button>
+      <FavoriteButton slug={loc.slug} name={loc.name} tone="light" className="absolute right-1.5 top-1.5 z-10" />
       <Link
         href={`/spots/${loc.slug}?activity=${kind}`}
         className="flex min-h-11 items-center justify-between border-t border-ocean-100 px-5 text-sm font-semibold text-ocean-700 outline-none transition hover:bg-ocean-50 focus-visible:bg-ocean-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ocean-600"
@@ -286,16 +328,19 @@ function PreviewCard({
           <h3 className="truncate text-lg font-extrabold text-slate-900">{loc.name}</h3>
           <p className="truncate text-xs text-slate-600">{loc.region}</p>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="關閉預覽"
-          className="-mr-2 -mt-2 flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full text-slate-600 outline-none transition hover:bg-ocean-50 hover:text-ocean-700 focus-visible:ring-2 focus-visible:ring-ocean-600"
-        >
-          <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-        </button>
+        <div className="-mr-2 -mt-2 flex shrink-0">
+          <FavoriteButton slug={loc.slug} name={loc.name} tone="light" />
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="關閉預覽"
+            className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full text-slate-600 outline-none transition hover:bg-ocean-50 hover:text-ocean-700 focus-visible:ring-2 focus-visible:ring-ocean-600"
+          >
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {!t ? (

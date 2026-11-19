@@ -773,3 +773,10 @@ html.landing-no-scrollbar body::-webkit-scrollbar {
 .sea-popup .maplibregl-popup-tip { display: none; }
 .sea-popup { z-index: 5; }
 .maplibregl-ctrl-attrib { font-size: 11px; }
+
+/* 收藏星號：按下收藏時輕輕放大一下（FavoriteButton；motion-safe 才套用） */
+@keyframes star-pop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
