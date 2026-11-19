@@ -1,0 +1,15 @@
+# 本機開發用 Python 3.9，正式環境（Dockerfile / CI）是 3.12。
+# SQLAlchemy 的 Mapped[...] 和 Pydantic 會在執行期解析型別註解，3.9 不認得 `X | None`，
+# 所以保留 Optional[...] / List[...]，不讓 pyupgrade 改寫（見 app/models.py、app/schemas.py 的註解）。
+target-version = "py39"
+
+[lint.pyupgrade]
+keep-runtime-typing = true
+
+[lint.flake8-bugbear]
+# FastAPI 的依賴注入寫法就是把 Depends(...) 放在參數預設值
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path"]
+
+[lint.isort]
+# backend/alembic/ 是遷移腳本資料夾，不是本地套件；`from alembic import ...` 指的是第三方套件
+known-third-party = ["alembic"]

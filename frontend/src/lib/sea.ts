@@ -54,6 +54,14 @@ export const RATING_HEX: Record<Rating, { base: string; soft: string; text: stri
   unknown: { base: "#94a3b8", soft: "#f1f5f9", text: "#475569", label: "資料不足" },
 };
 
+// 時段小條用的短標籤（文字永遠跟燈號並列，不只靠顏色）
+export const RATING_SHORT: Record<Rating, string> = {
+  green: "適合",
+  yellow: "普通",
+  red: "不建議",
+  unknown: "資料不足",
+};
+
 export function ratingOf(r: Rating | null | undefined): Rating {
   return r && r in RATING_HEX ? r : "unknown";
 }

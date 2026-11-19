@@ -46,13 +46,13 @@ class Location(Base):
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    conditions: Mapped[list["DailyCondition"]] = relationship(
+    conditions: Mapped[list[DailyCondition]] = relationship(
         back_populates="location",
         cascade="all, delete-orphan",
         order_by="DailyCondition.date",
     )
 
-    spots_rel: Mapped[list["Spot"]] = relationship(
+    spots_rel: Mapped[list[Spot]] = relationship(
         back_populates="location",
         cascade="all, delete-orphan",
         order_by="Spot.sort, Spot.id",
@@ -91,7 +91,7 @@ class Spot(Base):
     blurb: Mapped[str] = mapped_column(Text, default="")
     sort: Mapped[int] = mapped_column(Integer, default=0)
 
-    location: Mapped["Location"] = relationship(back_populates="spots_rel")
+    location: Mapped[Location] = relationship(back_populates="spots_rel")
 
 
 class DailyCondition(Base):
@@ -143,4 +143,4 @@ class DailyCondition(Base):
 
     raw: Mapped[Optional[dict]] = mapped_column(JSON)  # 原始 API payload，方便除錯與日後校正
 
-    location: Mapped["Location"] = relationship(back_populates="conditions")
+    location: Mapped[Location] = relationship(back_populates="conditions")

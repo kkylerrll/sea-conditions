@@ -29,10 +29,10 @@ function dayHead(iso: string) {
 
 function Cell({ k, v, sub }: { k: string; v: string; sub?: string }) {
   return (
-    <div className="rounded-lg bg-slate-50 px-3 py-2">
-      <div className="text-[11px] text-slate-500">{k}</div>
+    <div className="rounded-xl bg-sand px-3 py-2">
+      <div className="text-xs text-slate-600">{k}</div>
       <div className="mt-0.5 text-sm font-semibold tabular-nums text-slate-800">{v}</div>
-      {sub && <div className="mt-0.5 text-[10px] font-normal leading-tight text-slate-400">{sub}</div>}
+      {sub && <div className="mt-0.5 text-[10px] font-normal leading-tight text-slate-500">{sub}</div>}
     </div>
   );
 }
@@ -50,31 +50,31 @@ export default function ForecastStrip({
 
   return (
     <section>
-      <h2 className="mb-2 text-sm font-bold text-slate-500">未來預報</h2>
+      <h2 className="section-title">未來預報</h2>
       <div className="space-y-2">
         {days.map((c) => {
           const col = RATING_HEX[ratingFor(c, activity)];
           const dayReasons = reasonsFor(c, activity);
           return (
-            <details key={c.date} className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <details key={c.date} className="group overflow-hidden card-clean">
               <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
                 <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: col.base }} />
                 <span className="flex-1 text-sm font-semibold text-slate-900">{dayHead(c.date)}</span>
                 <span className="text-xs font-medium" style={{ color: col.text }}>
                   {col.label}
                 </span>
-                <span className="hidden text-xs tabular-nums text-slate-400 sm:inline">
+                <span className="hidden text-xs tabular-nums text-slate-500 sm:inline">
                   浪 {c.wave_height_m ?? "—"}m · 風 {c.wind_scale ?? "—"}級
                 </span>
                 <svg
-                  className="text-slate-400 transition-transform group-open:rotate-180"
+                  className="text-slate-500 transition-transform group-open:rotate-180"
                   width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true"
                 >
                   <path d="M5 8l5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </summary>
 
-              <div className="border-t border-slate-100 px-4 py-3">
+              <div className="border-t border-ocean-100 px-4 py-3">
                 {c.advice_text && (
                   <p className="mb-3 text-sm leading-relaxed text-slate-700">{c.advice_text}</p>
                 )}
@@ -106,7 +106,7 @@ export default function ForecastStrip({
                     ))}
                   </ul>
                 )}
-                <p className="mt-3 text-[11px] text-slate-400">
+                <p className="mt-3 text-[11px] text-slate-500">
                   資料來源：{c.source}
                   {updatedLabel(c.fetched_at) ? ` · 更新於 ${updatedLabel(c.fetched_at)}` : ""}
                   {c.advice_model ? ` · 建議由 ${c.advice_model} 生成` : " · 建議為系統模板"}

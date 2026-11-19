@@ -7,9 +7,34 @@
 }
 
 body {
-  @apply text-slate-900 antialiased;
-  background: linear-gradient(180deg, #f0f9ff 0%, #f8fafc 40%);
-  background-attachment: fixed;
+  @apply text-slate-800 antialiased;
+  background: #fbf8f3;
+}
+
+/* 「清爽海灘」共用樣式：極簡卡片 + 細藍線段落標題 */
+@layer components {
+  .card-clean {
+    @apply rounded-2xl border border-ocean-100 bg-white shadow-soft;
+  }
+  /* 深海 hero：探索頁頂部與詳情頁頭共用 */
+  .hero-ocean {
+    background:
+      radial-gradient(60% 90% at 88% 0%, rgba(255, 196, 140, 0.38) 0%, rgba(255, 196, 140, 0) 60%),
+      radial-gradient(50% 70% at 0% 100%, rgba(56, 188, 217, 0.35) 0%, rgba(56, 188, 217, 0) 65%),
+      linear-gradient(135deg, #052a45 0%, #0a4a73 48%, #0b6fa4 100%);
+  }
+  .lift-hover {
+    @apply transition duration-200 ease-out motion-reduce:transition-none;
+  }
+  @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+    .lift-hover:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 2px 4px rgba(9, 90, 134, 0.08), 0 10px 24px rgba(9, 90, 134, 0.12), 0 24px 48px rgba(9, 90, 134, 0.12);
+    }
+  }
+  .section-title {
+    @apply mb-4 flex items-center gap-2.5 text-lg font-bold tracking-tight text-abyss-800 before:h-5 before:w-1 before:rounded-full before:bg-coral-400 sm:text-xl;
+  }
 }
 
 /* 海面波浪：把 2x 寬的波形往左捲，做出流動感 */
@@ -74,15 +99,20 @@ body {
      用三次方 easing 擠進剩下的 35%——深的地方色標間距本來就比較密集
      （DEPTH_GRADIENT_STOPS 選的深度點本身是疏密不均的 0/5/10/20/40/
      100/300/1000），換算成百分比之後間距自然也不均,不需要另外手調。 */
+  /* round 13：最上面 10% 是天空與海平面（首頁一開始是站在海面上），其餘色標
+     是原本的水下漸層壓縮進剩下的 90%（位置 = 10% + 0.9 × 原百分比）。 */
   background: linear-gradient(
     180deg,
-    #4dc2e8 0%,
-    #32b0de 8.13%,
-    #1c98d3 16.25%,
-    #1175b5 32.5%,
-    #0a4d85 65%,
-    #052e53 78.89%,
-    #031428 87.65%,
+    #7db6e8 0%,
+    #bcd9ee 6%,
+    #d9ecf5 9.4%,
+    #4dc2e8 10%,
+    #32b0de 17.3%,
+    #1c98d3 24.6%,
+    #1175b5 39.3%,
+    #0a4d85 68.5%,
+    #052e53 81%,
+    #031428 88.9%,
     #02060d 100%
   );
 }
@@ -91,7 +121,10 @@ body {
 
 /* 未啟用時就是一般容器；啟用後長度＝章節數 × 一屏，舞台在裡面 sticky 住。 */
 .progress-armed .chapter-track {
-  height: calc(var(--chapters, 5) * 100vh);
+  /* round 13：每章 135vh（原本 100vh）。首頁現在從海面開始、緩緩沉入水中，整趟下潛
+     拉長，捲動的每一下對應的畫面變化小一點，才是「慢慢往下」而不是一下就換景。
+     章節文字的淡入淡出吃 --progress（0→1），跟總長度無關，五章仍然各自讀得完。 */
+  height: calc(var(--chapters, 5) * 135vh);
 }
 
 .chapter-stage {
@@ -196,6 +229,13 @@ body {
     linear-gradient(180deg, transparent 0%, transparent 75%, rgba(2, 6, 13, 0.3) 100%);
 }
 
+/* round 13：首頁一開始是海面，墊底的暗化要非常淡（看得到海），隨捲動進度加深到原本的
+   強度——捲到 --progress ≈ 0.18（剛沉進水裡）就是 100%。只在捲動版啟用，沒有 JS 的
+   靜態長頁維持原本強度。 */
+.progress-armed .dive-scrim {
+  opacity: clamp(0.4, calc(0.4 + var(--progress, 0) * 3.4), 1);
+}
+
 @media (min-width: 1024px) {
   .dive-scrim {
     /* 文字欄在左半邊（見下面 .chapter-inner 的 margin-left/width），暗化
@@ -224,6 +264,10 @@ body {
   align-items: center;
   text-align: center;
   color: #fff;
+}
+/* 章節 00 的文字壓在天空與海面上（暗化墊底很淡），加一圈同色系的柔邊陰影保證讀得到。 */
+.progress-armed .chapter[data-chapter-at="0"] .chapter-inner {
+  text-shadow: 0 1px 14px rgba(3, 40, 78, 0.6), 0 0 3px rgba(3, 40, 78, 0.4);
 }
 .progress-armed .chapter-inner {
   opacity: var(--vis2);
@@ -614,3 +658,118 @@ body {
      根本不建立 WebGL renderer，畫布維持空白，不需要在這裡另外拿 CSS 蓋掉；
      .dive-scrim 是靜態漸層、不含動畫，開不開都留著沒差。 */
 }
+
+/* 首頁隱藏捲軸（ScrollScene 掛載時加在 <html> 上）；捲動功能不受影響。 */
+html.landing-no-scrollbar,
+html.landing-no-scrollbar body {
+  scrollbar-width: none;
+}
+html.landing-no-scrollbar::-webkit-scrollbar,
+html.landing-no-scrollbar body::-webkit-scrollbar {
+  display: none;
+}
+
+/* 地圖預覽卡：桌機浮在 pin 旁（依 pin 在左／右半邊決定開哪一側），手機固定在地圖底部 */
+.map-pop {
+  position: absolute;
+  z-index: 20;
+  left: 0.5rem;
+  right: 0.5rem;
+  bottom: 2rem;
+  animation: map-pop-in 220ms ease-out both;
+}
+@keyframes map-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .map-pop {
+    animation: none;
+  }
+}
+
+/* ---------- MapLibre 地圖：標記與 popup ---------- */
+.sea-pin {
+  position: relative;
+  display: flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  outline: none;
+}
+.sea-pin-body {
+  display: flex;
+  filter: drop-shadow(0 2px 3px rgba(5, 42, 69, 0.45));
+  transition: transform 160ms ease-out;
+}
+.sea-pin.is-hovered .sea-pin-body { transform: scale(1.15); }
+.sea-pin.is-selected .sea-pin-body { transform: scale(1.25); }
+.sea-pin.is-selected::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 0 0 2px #073b5e;
+}
+.sea-pin:focus-visible::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 9999px;
+  border: 2.5px dashed #0b6fa4;
+}
+.sea-pin-pulse {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border-radius: 9999px;
+  opacity: 0.3;
+  animation: sea-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes sea-ping {
+  75%, 100% { transform: scale(1.9); opacity: 0; }
+}
+.sea-pin-label {
+  position: absolute;
+  top: 50%;
+  left: calc(50% + 17px);
+  display: none;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 700;
+  color: #052a45;
+  text-shadow: -1.5px 0 #fff, 1.5px 0 #fff, 0 -1.5px #fff, 0 1.5px #fff, 1px 1px #fff, -1px -1px #fff, 1px -1px #fff, -1px 1px #fff;
+  pointer-events: none;
+}
+.sea-pin-label.is-empty { font-weight: 500; color: #4b6178; }
+.sea-pin.is-hovered .sea-pin-label,
+.sea-pin.is-selected .sea-pin-label { display: block; }
+@media (min-width: 640px) {
+  .sea-map-detail .sea-pin-label { display: block; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sea-pin-pulse { display: none; }
+  .sea-pin-body { transition: none; }
+}
+.sea-popup .maplibregl-popup-content {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 1rem;
+}
+.sea-popup .maplibregl-popup-tip { display: none; }
+.sea-popup { z-index: 5; }
+.maplibregl-ctrl-attrib { font-size: 11px; }

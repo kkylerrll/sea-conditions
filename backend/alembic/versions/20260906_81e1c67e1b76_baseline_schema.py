@@ -17,11 +17,11 @@ Create Date: 2026-09-06 14:20:42.937269+08:00
 """
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
+from typing import Union
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision: str = '81e1c67e1b76'
 down_revision: Union[str, None] = None

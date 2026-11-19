@@ -4,11 +4,9 @@
 // 今天已結束的時段淡化，目前或下一個時段加框。沒有 slots 就什麼都不畫。
 
 import { useEffect, useState } from "react";
-import { type ActivityKind, hasBothKinds, nowMinutesTaipei, ratingOf, RATING_HEX } from "@/lib/sea";
+import { type ActivityKind, hasBothKinds, nowMinutesTaipei, ratingOf, RATING_HEX, RATING_SHORT } from "@/lib/sea";
 import { todayInTaipei } from "@/lib/format";
 import type { Condition } from "@/lib/types";
-
-const KIND_SHORT: Record<ActivityKind, string> = { dive: "潛", surf: "衝" };
 
 const toMin = (hhmm: string) => {
   const [h, m] = hhmm.split(":").map(Number);
@@ -47,47 +45,60 @@ export default function SlotStrip({
 
   return (
     <div>
-      <div className="mb-1.5 text-[11px] text-slate-500">時段預報（白天）</div>
-      <div className="grid grid-cols-4 gap-1.5">
+      <div className="mb-2 text-xs font-semibold tracking-wide text-ocean-700">時段預報（白天）</div>
+      <div className="grid grid-cols-2 gap-2 min-[520px]:grid-cols-4">
         {slots.map((s, i) => {
           const past = isToday && now != null && now >= toMin(s.end);
           const hi = i === current;
+          const started = now != null && now >= toMin(s.start);
           return (
             <div
               key={s.key}
-              className={`min-w-0 rounded-lg border px-1.5 py-2 text-center ${
-                hi ? "border-sky-400 bg-sky-50" : "border-slate-200 bg-white"
-              } ${past ? "opacity-45" : ""}`}
+              className={`min-w-0 rounded-xl border px-2.5 py-2.5 ${
+                hi
+                  ? "border-2 border-ocean-600 bg-white"
+                  : past
+                    ? "border-ocean-100 bg-sand-100"
+                    : "border-ocean-100 bg-white"
+              }`}
             >
-              <div className="text-xs font-semibold text-slate-800">{s.label}</div>
-              <div className="text-[10px] tabular-nums text-slate-400">
-                {s.start.slice(0, 2)}–{s.end.slice(0, 2)}
+              <div className="flex items-baseline justify-between gap-1">
+                <span className={`text-sm font-semibold ${past ? "text-slate-600" : "text-slate-800"}`}>
+                  {s.label}
+                </span>
+                <span className="text-xs tabular-nums text-slate-600">
+                  {s.start.slice(0, 2)}–{s.end.slice(0, 2)}
+                </span>
               </div>
-              <div className="my-1.5 flex items-center justify-center gap-1.5">
-                {kinds.map((k, j) => {
+              {hi && (
+                <div className="text-[11px] font-semibold text-ocean-700">
+                  {started ? "進行中" : "下一時段"}
+                </div>
+              )}
+              {past && <div className="text-[11px] text-slate-600">已過</div>}
+              <ul className={`my-2 space-y-1 ${past ? "opacity-70" : ""}`}>
+                {kinds.map((k) => {
                   const r = ratingOf(s.ratings?.[k]?.rating);
                   return (
-                    <span
-                      key={k}
-                      className={`flex items-center gap-0.5 ${j > 0 ? "opacity-60" : ""}`}
-                      title={`${k === "dive" ? "潛水" : "衝浪"}：${RATING_HEX[r].label}`}
-                    >
-                      {kinds.length > 1 && (
-                        <span className="text-[9px] text-slate-400">{KIND_SHORT[k]}</span>
-                      )}
+                    <li key={k} className="flex items-center gap-1.5 text-xs">
                       <span
-                        className="h-2.5 w-2.5 rounded-full"
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
                         style={{ background: RATING_HEX[r].base }}
+                        aria-hidden="true"
                       />
-                    </span>
+                      <span className="text-slate-600">{k === "dive" ? "潛水" : "衝浪"}</span>
+                      <span className="font-semibold" style={{ color: RATING_HEX[r].text }}>
+                        {RATING_SHORT[r]}
+                      </span>
+                    </li>
                   );
                 })}
+              </ul>
+              <div className={`text-xs tabular-nums text-slate-700 ${past ? "opacity-80" : ""}`}>
+                浪 {s.wave_height_m != null ? s.wave_height_m.toFixed(1) : "—"} m
               </div>
-              <div className="text-[11px] tabular-nums text-slate-600">
-                浪 {s.wave_height_m != null ? s.wave_height_m.toFixed(1) : "—"}m
-              </div>
-              <div className="text-[11px] tabular-nums text-slate-600">
-                風 {s.wind_scale ?? "—"}級
+              <div className={`text-xs tabular-nums text-slate-700 ${past ? "opacity-80" : ""}`}>
+                風 {s.wind_scale ?? "—"} 級
               </div>
             </div>
           );

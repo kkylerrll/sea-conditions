@@ -1,0 +1,39 @@
+# 由 project-kit 產生。lint、型別檢查、測試都要過才算綠。
+name: ci-backend
+
+on:
+  push:
+    branches: [main]
+    paths: ["backend/**", ".github/workflows/ci-backend.yml"]
+  pull_request:
+    paths: ["backend/**", ".github/workflows/ci-backend.yml"]
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff mypy pytest
+      - name: Lint
+        run: ruff check .
+      - name: Type check
+        run: mypy . --ignore-missing-imports --exclude '(venv|\.venv|build|dist)/'
+      - name: Test
+        # pytest 沒找到任何測試時 exit 5；還沒寫測試前先放行，寫了之後就是真的檢查
+        run: pytest -q || [ $? -eq 5 ]
+      - name: Docker build
+        if: hashFiles('backend/Dockerfile') != ''
+        run: docker build -t ci-check .

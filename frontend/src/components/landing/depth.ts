@@ -2,73 +2,132 @@
 // 和 CSS（深度計游標）都要用到同一條曲線，寫在這裡當單一來源，避免兩邊各自寫
 // 一次然後慢慢對不上。
 //
-// 曲線分兩段：
-//   0     → 0.65  線性對應 0 → 40m。這段是「寫實潛水」，深度感要跟捲動量成比例，
-//                  使用者才能用捲動速度估自己下潛的快慢。
-//   0.65 → 1      非線性對應 40m → 1000m（三次方 easing）。這段是「墜入深海」，
-//                  故意讓讀數在最後一小段捲動裡暴衝——40 幾乎不動、快到底時
-//                  幾百公尺幾百公尺地跳，賣的就是「一腳踩空掉進深淵」的感覺。
+// 第 13 輪重做：首頁一開始是「站在海面上」，往下捲才慢慢沉進水裡。曲線分三段，
+// 接縫處位置與速度都連續（C1），沒有任何一個捲動位置會讓畫面「跳」一下：
 //
-// 0.65 這個切點（原本是 0.8）是第二輪回饋改的：使用者反映鮟鱇魚／水母幾乎沒
-// 看到就結束了——深海段只分到 0.2 的捲動長度，生物又大多擺在很深的地方，
-// 等於是在極短的捲動窗口裡衝過一大段深度，根本來不及看清楚。分給深海段更長
-// 的捲動距離（0.35，幾乎是原本的兩倍），生物才有時間被看到。
+//   0 → SURFACE_HOLD        浮標段。鏡頭漂在海面（離海平面 EYE_HEIGHT_M），深度恆為負的眼高，
+//                           不動。（章節 00 的文字在這裡。）
+//   SURFACE_HOLD → SURFACE_END   下沉段。三次 Hermite：起點速度 0（慢慢開始往下）、
+//                           終點速度與下一段起點相同，穿過水面（深度 0）到 SURFACE_END_DEPTH_M。
+//   SURFACE_END → 1         下潛段。指數曲線 5m → 1000m：每單位捲動量讓「深度的對數」
+//                           等速增加——也就是每捲一下，畫面上感受到的變化（水色變暗、
+//                           生物種類交替）大致一樣多，不再有舊版最後 35% 的三次方暴衝。
 //
-// 拿掉的東西：舊版的 SURFACE_PORTION（0.45）。那個值只是因為章節 00、01 曾經是
-// 水面上的衝浪照片才需要——現在整頁一開始就是水下，深度從 progress=0 就開始算，
-// 這個理由已經不存在，全部拿掉（包含 globals.css 裡兩處讀它的地方）。
+// 這個檔案的 depth 一律指「鏡頭在平均海平面下幾公尺」。水上為負值（cameraDepthAt），
+// 給讀數、水色、生物區間用的 depthAt() 則夾在 ≥ 0。
+//
+// 另外提供 remapLegacyProgress()：生物區間原本是用「舊捲動進度」寫的（REEF_RANGE =
+// [0.02, 0.35] 之類），重映射到新的下潛段，不用逐一手改每個區間。
 
-/** 寫實段（線性）結束的深度，也是墜入深海段的起點。 */
-export const SHALLOW_DEPTH_M = 40;
+import { EYE_HEIGHT_M } from "./dive/ocean/config";
 
-/** 這次下潛的最深處，只在最後一小段捲動才會逼近。 */
+/** 這次下潛的最深處。 */
 export const MAX_DEPTH_M = 1000;
 
-/** 寫實段佔掉的捲動比例；之後的 0.35 全部用來墜落——深海生物需要這段長度才有
-    機會被看到，見上面的說明。 */
-export const SHALLOW_PROGRESS = 0.65;
+/** 浮標段結束（開始下沉）的捲動進度。0.06 之前鏡頭只隨波浮動。 */
+export const SURFACE_HOLD = 0.06;
 
-/** 墜落段的 easing 指數：越大，讀數在接近底部時暴衝得越明顯。 */
-const PLUNGE_EXPONENT = 3;
+/** 下沉完成的捲動進度：此時鏡頭在 SURFACE_END_DEPTH_M 深，水面在頭頂。 */
+export const SURFACE_END = 0.22;
 
-/** 深度計刻度：前段等距（呼應線性），後段間距故意越擠越密，本身就是「加速」的視覺。 */
-export const DEPTH_TICKS = [0, 10, 20, 30, 40, 100, 300, 600, 1000];
+/** 下沉完成時的深度（m）。要夠深，潛水員才能整個人在水面下（見 engine.ts 的潛水員入場）。 */
+export const SURFACE_END_DEPTH_M = 5;
 
-export function depthAt(progress: number): number {
-  const p = Math.max(0, Math.min(1, progress));
-  if (p <= SHALLOW_PROGRESS) {
-    return (p / SHALLOW_PROGRESS) * SHALLOW_DEPTH_M;
-  }
-  const t = (p - SHALLOW_PROGRESS) / (1 - SHALLOW_PROGRESS);
-  return SHALLOW_DEPTH_M + (MAX_DEPTH_M - SHALLOW_DEPTH_M) * Math.pow(t, PLUNGE_EXPONENT);
+/** 下潛段指數的陡度：越大，淺水停留越久、最後越快。5 → 40m 約在下潛段的 36%、
+    100m 約 54%、300m 約 76%。 */
+const DEEP_K = 5;
+
+/** 浮標段的鏡頭「深度」（負＝在海平面之上）。 */
+export const SURFACE_DEPTH_M = -EYE_HEIGHT_M;
+
+const DEEP_SPAN = 1 - SURFACE_END;
+const DEEP_NORM = Math.exp(DEEP_K) - 1;
+
+function deepDepth(t: number): number {
+  return SURFACE_END_DEPTH_M + (MAX_DEPTH_M - SURFACE_END_DEPTH_M) * ((Math.exp(DEEP_K * t) - 1) / DEEP_NORM);
 }
 
-/** depthAt 的反函式，用來把深度計的刻度放到捲動軸上對應的位置。 */
+// 下潛段起點的速度（m / 單位捲動進度），下沉段的終點速度必須與它相等。
+const DEEP_SLOPE_AT_START = ((MAX_DEPTH_M - SURFACE_END_DEPTH_M) * DEEP_K) / DEEP_NORM / DEEP_SPAN;
+
+const SINK_SPAN = SURFACE_END - SURFACE_HOLD;
+
+/** 下沉段：三次 Hermite，u∈[0,1]。起點 (0, SURFACE_DEPTH_M) 速度 0，終點 (1, SURFACE_END_DEPTH_M) 速度 DEEP_SLOPE。 */
+function sinkDepth(u: number): number {
+  const u2 = u * u;
+  const u3 = u2 * u;
+  const h00 = 2 * u3 - 3 * u2 + 1;
+  const h10 = u3 - 2 * u2 + u;
+  const h01 = -2 * u3 + 3 * u2;
+  const h11 = u3 - u2;
+  return h00 * SURFACE_DEPTH_M + h10 * 0 + h01 * SURFACE_END_DEPTH_M + h11 * DEEP_SLOPE_AT_START * SINK_SPAN;
+}
+
+/** 鏡頭在平均海平面下幾公尺（水上為負）。單調遞增、C1 連續。 */
+export function cameraDepthAt(progress: number): number {
+  const p = Math.max(0, Math.min(1, progress));
+  if (p <= SURFACE_HOLD) return SURFACE_DEPTH_M;
+  if (p <= SURFACE_END) return sinkDepth((p - SURFACE_HOLD) / SINK_SPAN);
+  return deepDepth((p - SURFACE_END) / DEEP_SPAN);
+}
+
+/** 讀數／水色／燈光用的深度（≥ 0）。 */
+export function depthAt(progress: number): number {
+  return Math.max(0, cameraDepthAt(progress));
+}
+
+/** depthAt 的反函式（深度 m → 捲動進度），深度計刻度與生物區間用。depthM ≤ 0 回傳剛好穿過水面的進度。 */
 export function progressAt(depthM: number): number {
   const d = Math.max(0, Math.min(MAX_DEPTH_M, depthM));
-  if (d <= SHALLOW_DEPTH_M) {
-    return (d / SHALLOW_DEPTH_M) * SHALLOW_PROGRESS;
+  if (d >= SURFACE_END_DEPTH_M) {
+    const t = Math.log(1 + ((d - SURFACE_END_DEPTH_M) / (MAX_DEPTH_M - SURFACE_END_DEPTH_M)) * DEEP_NORM) / DEEP_K;
+    return SURFACE_END + t * DEEP_SPAN;
   }
-  const t = (d - SHALLOW_DEPTH_M) / (MAX_DEPTH_M - SHALLOW_DEPTH_M);
-  return SHALLOW_PROGRESS + (1 - SHALLOW_PROGRESS) * Math.pow(t, 1 / PLUNGE_EXPONENT);
+  // 下沉段沒有封閉解：二分搜尋（單調）。
+  let lo = SURFACE_HOLD;
+  let hi = SURFACE_END;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (cameraDepthAt(mid) < d) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+/** 深度計刻度。 */
+export const DEPTH_TICKS = [0, 10, 20, 40, 100, 300, 600, 1000];
+
+/** 生物不能出現在水面之上，也不要在鏡頭剛沒入水時就貼著水面：最淺的出現深度。 */
+export const MIN_CREATURE_DEPTH_M = 4;
+
+/**
+ * 把舊版「進度區間」的端點（0..1，第 12 輪以前整段捲動都在水下）換成新曲線的進度。
+ * 舊版整段 0..1 都是下潛；現在前面 SURFACE_END 是水面段，下潛只佔後面 (1 - SURFACE_END)，
+ * 所以做線性重映射：new = SURFACE_END + old × (1 - SURFACE_END)。這樣每種生物仍然落在
+ * 原本設計的「第幾章」附近（礁魚在 01、魚群在 02……），不用逐一手改區間。
+ * 下緣另外夾在 MIN_CREATURE_DEPTH_M 之後：鏡頭沒入水之前不會有任何生物。端點 1.0 維持 1.0。
+ */
+export function remapLegacyProgress(legacyProgress: number): number {
+  if (legacyProgress >= 1) return 1;
+  return Math.max(SURFACE_END + legacyProgress * (1 - SURFACE_END), progressAt(MIN_CREATURE_DEPTH_M));
 }
 
 /**
- * 場景的「暗化程度」0→1，給三.js 的背景色／濃霧／燈光衰減用——刻意跟 depthAt()
- * 分開算，不要用 depthAt(progress) / MAX_DEPTH_M 那條曲線。
+ * 場景的「暗化程度」0→1，給三.js 的背景色／濃霧／燈光衰減用——刻意跟 depthAt() 的線性
+ * 公尺數分開算，不要用 depthAt(progress) / MAX_DEPTH_M：MAX_DEPTH_M 是 1000，淺水段
+ * （0～40m）換算成 0～1000 只佔 0～0.04，畫面幾乎不會變暗。
  *
- * 原因：MAX_DEPTH_M 是 1000（給最後暴衝的深海用），如果暗化程度直接跟公尺數
- * 掛鉤，00～03 章（0～40m，寫實潛水的全部範圍）換算成 0～1000 只佔 0～0.04，
- * 畫面幾乎不會變暗，使用者捲過八成的頁面都停在同一個亮度，「越潛越暗」的
- * 敘事會整個垮掉。暗化程度要跟著章節的節奏（progress）走，不是跟著深度的
- * 公尺數走——兩件事看起來像同一條曲線，實際上服務的是不同的敘事需求。
+ * 這裡是兩個指數衰減相加（淺水快、深處慢），整條曲線平滑沒有轉折：
+ *   5m≈0.07、20m≈0.25、40m≈0.41、100m≈0.66、300m≈0.85、1000m=1。
+ * 水上（深度 0）為 0。
  */
+const DARK_A = 0.62;
+const DARK_TAU_A = 45;
+const DARK_TAU_B = 400;
+const DARK_RAW_MAX = 1 - DARK_A * Math.exp(-MAX_DEPTH_M / DARK_TAU_A) - (1 - DARK_A) * Math.exp(-MAX_DEPTH_M / DARK_TAU_B);
+
 export function environmentDarkness(progress: number): number {
-  const p = Math.max(0, Math.min(1, progress));
-  if (p <= SHALLOW_PROGRESS) {
-    // 00～03 章：均勻暗到 0.7，留最後一段給「墜入深海」收尾用。
-    return (p / SHALLOW_PROGRESS) * 0.7;
-  }
-  const t = (p - SHALLOW_PROGRESS) / (1 - SHALLOW_PROGRESS);
-  return 0.7 + 0.3 * Math.pow(t, 2);
+  const d = depthAt(progress);
+  const raw = 1 - DARK_A * Math.exp(-d / DARK_TAU_A) - (1 - DARK_A) * Math.exp(-d / DARK_TAU_B);
+  return Math.min(1, raw / DARK_RAW_MAX);
 }

@@ -15,7 +15,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ALL_MODELS, DEBUG_ALL_ROWS, type ModelName } from "./dive/models";
 
-// 除錯模式：網址加 `?diveDebug=<物種>`（例如 `?diveDebug=mackerel`）會讓
+// 除錯模式：網址加 `?diveDebug=<物種>`（例如 `?diveDebug=tuna`）會讓
 // DiveEngine 只放大顯示那一種生物、慢慢左右擺盪，用來肉眼確認牠朝向正確
 // （見 dive/engine.ts 的 updateDebugScene）。`?diveDebug=all` 則是七種生物
 // 一次排排站（見 dive/engine.ts 的 setupDebugAllScene）——單一物種模式把

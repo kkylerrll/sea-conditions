@@ -73,8 +73,12 @@ export default function AppChrome({
           <footer className="landing-footer mx-auto mt-12 max-w-5xl border-t pt-6 text-center text-xs">
             <p>海況資料僅供參考，下水前請以現場狀況與官方沿岸預報為準。</p>
             <p className="mt-2 opacity-70">
-              首頁 3D 模型：ucdavisterc、LasquetiSpice、1shxxn、DigitalLife3D、sharkingaround、
-              Abby_Holzworth1、n-（CC BY 4.0），來源 Sketchfab。
+              首頁 3D 模型：ucdavisterc、zixisun02、Dsanchez13、GoldenZtuff、alvaniLa、
+              kenchoo、Poshel、n-（CC BY 4.0），來源 Sketchfab；
+              亞洲鱸：BarramundiFish by Microsoft／Khronos glTF Sample Assets（CC0）。
+            </p>
+            <p className="mt-1 opacity-70">
+              海面：Ocean · WebGPU by hirakujira (CodePen, MIT)。
             </p>
           </footer>
         </div>
@@ -112,7 +116,7 @@ export default function AppChrome({
             style={{ paddingBottom: "calc(4rem + env(safe-area-inset-bottom))" }}
           >
             {children}
-            <footer className="mx-auto mt-12 max-w-5xl border-t border-slate-200 pt-6 text-center text-xs text-slate-400">
+            <footer className="mx-auto mt-12 max-w-5xl border-t border-ocean-100 pt-6 text-center text-xs text-slate-600">
               海況資料僅供參考，下水前請以現場狀況與官方沿岸預報為準。
             </footer>
           </div>
