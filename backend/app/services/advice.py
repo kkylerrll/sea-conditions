@@ -135,7 +135,7 @@ def generate_advice(
         user = (
             f"地點：{location_name}\n"
             f"日期：{c.get('date')}\n"
-            f"系統燈號：{_RATING_LABEL.get(c.get('rating'), c.get('rating'))}"
+            f"系統燈號：{_RATING_LABEL.get(c.get('rating') or '', c.get('rating'))}"
             f"（分數 {_fmt(c.get('rating_score'))}/100）\n"
             f"浪高：{_fmt(c.get('wave_height_m'), ' m')}\n"
             f"湧浪週期：{_fmt(c.get('wave_period_s'), ' s')}\n"

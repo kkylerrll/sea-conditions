@@ -1,0 +1,41 @@
+# 由 project-kit 產生。型別檢查、lint、測試、build 都要過才算綠。
+name: ci-frontend
+
+on:
+  push:
+    branches: [main]
+    paths: ["frontend/**", ".github/workflows/ci-frontend.yml"]
+  pull_request:
+    paths: ["frontend/**", ".github/workflows/ci-frontend.yml"]
+
+defaults:
+  run:
+    working-directory: frontend
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Type check
+        if: hashFiles('frontend/tsconfig.json') != ''
+        run: pnpm exec tsc --noEmit
+      - name: Lint
+        run: pnpm run --if-present lint
+      - name: Test
+        run: pnpm run --if-present test
+      - name: Build
+        run: pnpm run build
+        # build 需要的公開環境變數（NEXT_PUBLIC_*）放在這裡或 repo secrets：
+        # env:
+        #   NEXT_PUBLIC_API_URL: https://example.invalid

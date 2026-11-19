@@ -15,6 +15,7 @@ import datetime as dt
 import logging
 import math
 import time
+from typing import TypedDict
 
 import httpx
 
@@ -33,7 +34,14 @@ def _deg_to_compass(deg: float | None) -> str | None:
 
 
 # 白天固定時段（start 含、end 不含，台北時間）。key 供前端對應，label 為顯示名稱。
-SLOTS = [
+class _Slot(TypedDict):
+    key: str
+    label: str
+    start: int
+    end: int
+
+
+SLOTS: list[_Slot] = [
     {"key": "early", "label": "早上", "start": 6, "end": 9},
     {"key": "morning", "label": "上午", "start": 9, "end": 12},
     {"key": "afternoon", "label": "下午", "start": 12, "end": 15},
@@ -79,7 +87,7 @@ def aggregate_slots(hours: dict[int, dict]) -> list[dict] | None:
     for sl in SLOTS:
         recs = [hours[h] for h in range(sl["start"], sl["end"]) if h in hours]
 
-        def vals(k: str) -> list[float]:
+        def vals(k: str, recs: list[dict] = recs) -> list[float]:
             return [r[k] for r in recs if k in r]
 
         wh, wp, wsp, gu = vals("wave_height"), vals("wave_period"), vals("wind_speed_10m"), vals("wind_gusts_10m")

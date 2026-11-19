@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -55,4 +56,6 @@ def root() -> dict:
 @app.get("/health")
 def health() -> dict:
     dialect = settings.database_url.split("://", 1)[0].split("+", 1)[0]
-    return {"status": "ok", "llm": settings.use_llm, "db": dialect}
+    # Render 部署時注入 RENDER_GIT_COMMIT；部署後比對它確認新版本真的上線
+    commit = os.environ.get("RENDER_GIT_COMMIT", "")[:7] or None
+    return {"status": "ok", "llm": settings.use_llm, "db": dialect, "commit": commit}

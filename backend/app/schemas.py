@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import List, Optional
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 class ActivityRating(BaseModel):
     rating: str
     score: Optional[float] = None
-    reasons: List[str] = []
+    reasons: list[str] = []
 
 
 class Ratings(BaseModel):
@@ -55,9 +55,9 @@ class ConditionOut(BaseModel):
 
     rating: str
     rating_score: Optional[float] = None
-    rating_reasons: List[str] = []
+    rating_reasons: list[str] = []
     ratings: Optional[Ratings] = None
-    slots: Optional[List[SlotOut]] = None
+    slots: Optional[list[SlotOut]] = None
 
     advice_text: Optional[str] = None
     advice_model: Optional[str] = None
@@ -80,7 +80,7 @@ class SpotOut(BaseModel):
     lat: float
     lon: float
     coord_approx: bool = False
-    activities: List[str] = []
+    activities: list[str] = []
     bottom: Optional[str] = None
     facing_deg: Optional[int] = None
     shelter: Optional[str] = None
@@ -99,16 +99,16 @@ class LocationOut(BaseModel):
     name_en: Optional[str] = None
     region: str
     blurb: str
-    spots: List[str] = []
-    activities: List[str] = []
+    spots: list[str] = []
+    activities: list[str] = []
     lat: float
     lon: float
 
 
 class LocationWithConditions(LocationOut):
     today: Optional[ConditionOut] = None
-    forecast: List[ConditionOut] = []
-    spot_list: List[SpotOut] = []
+    forecast: list[ConditionOut] = []
+    spot_list: list[SpotOut] = []
 
 
 class RefreshFailure(BaseModel):
@@ -123,5 +123,5 @@ class RefreshResult(BaseModel):
     llm: bool
     # 以下為可見性欄位：背景模式下沒有結果，故皆為選填
     total_locations: Optional[int] = None
-    failed: List[RefreshFailure] = []
+    failed: list[RefreshFailure] = []
     tide_failed: Optional[int] = None

@@ -114,6 +114,7 @@ export default function LiveMap({
 
   // 建立地圖（只跑一次，動態載入 maplibre-gl）
   useEffect(() => {
+    const markerMap = markers.current; // ref 本身不會換，cleanup 用同一個 Map
     let cancelled = false;
     let map: MlMap | null = null;
     let onWheel: ((e: WheelEvent) => void) | null = null;
@@ -194,8 +195,8 @@ export default function LiveMap({
       cancelled = true;
       clearTimeout(hintTimer);
       if (onWheel && el) el.removeEventListener("wheel", onWheel, { capture: true });
-      markers.current.forEach(({ marker }) => marker.remove());
-      markers.current.clear();
+      markerMap.forEach(({ marker }) => marker.remove());
+      markerMap.clear();
       map?.remove();
       mapRef.current = null;
     };

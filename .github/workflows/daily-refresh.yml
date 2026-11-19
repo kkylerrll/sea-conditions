@@ -6,7 +6,8 @@ name: 定時更新海況（每 3 小時）
 # 為什麼不再打 Render 的 /api/refresh：
 #   Render 免費方案共用出口 IP，Open-Meteo 對單一 IP 限流（429），後端把失敗吞掉、
 #   回 updated_locations=0 但 HTTP 200，排程照樣綠勾。改成在 Actions runner 上直接跑
-#   `python -m app.refresh` 寫入 Supabase；全數失敗會讓 job 變紅，部分失敗會出 warning。
+#   `python -m app.refresh` 寫入 Supabase；任何地點的海況沒更新到就讓 job 變紅（成功的照樣寫入），
+#   潮汐失敗只出 warning 並列出地點。
 #
 # 需要的 Secrets（Settings → Secrets and variables → Actions → Secrets）：
 #   DATABASE_URL  Supabase「Connection pooling」連線字串（postgresql+psycopg://...pooler.supabase.com...?sslmode=require）
