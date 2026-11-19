@@ -12,6 +12,8 @@ class ActivityRating(BaseModel):
     rating: str
     score: Optional[float] = None
     reasons: list[str] = []
+    # 有白天時段時：{"best": 時段key, "worst": 時段key}
+    daytime_range: Optional[dict[str, str]] = None
 
 
 class Ratings(BaseModel):
