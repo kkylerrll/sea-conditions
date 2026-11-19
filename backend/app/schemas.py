@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # Python 3.9 相容：用 Optional[...] / List[...]，不用 `X | None`。
 
@@ -127,3 +127,68 @@ class RefreshResult(BaseModel):
     total_locations: Optional[int] = None
     failed: list[RefreshFailure] = []
     tide_failed: Optional[int] = None
+
+
+# ───────────── 使用者實測回報 ─────────────
+
+
+class ReportIn(BaseModel):
+    date: dt.date
+    activity: Literal["dive", "surf"]
+    feeling: Literal["good", "ok", "bad"]
+    visibility_m: Optional[int] = Field(default=None, ge=0, le=40)
+    note: Optional[str] = None
+
+    @field_validator("note")
+    @classmethod
+    def _clean_note(cls, v):
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            return None
+        if len(v) > 140:
+            raise ValueError("備註最多 140 字")
+        return v
+
+    @model_validator(mode="after")
+    def _check_rules(self):
+        from .tz import today_taipei
+
+        today = today_taipei()
+        if self.date not in (today, today - dt.timedelta(days=1)):
+            raise ValueError("日期只能是台灣時間的今天或昨天")
+        if self.visibility_m is not None and self.activity != "dive":
+            raise ValueError("只有潛水可以填能見度")
+        return self
+
+
+class ReportOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    date: dt.date
+    activity: str
+    feeling: str
+    visibility_m: Optional[int] = None
+    note: Optional[str] = None
+    created_at: dt.datetime
+
+    @field_validator("created_at")
+    @classmethod
+    def _created_at_utc(cls, v):
+        if v.tzinfo is None:
+            return v.replace(tzinfo=dt.timezone.utc)
+        return v
+
+
+class FeelingCounts(BaseModel):
+    good: int = 0
+    ok: int = 0
+    bad: int = 0
+
+
+class ReportSummary(BaseModel):
+    count: int
+    by_feeling: FeelingCounts
+    avg_visibility_m: Optional[float] = None
+    recent: list[ReportOut] = []

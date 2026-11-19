@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     use_llm: bool = False
     llm_model: str = "claude-opus-5"
 
+    # 回報防濫用：ip_hash = sha256(ip + salt)。正式環境請設 REPORT_SALT；沒設用固定預設值
+    report_salt: str = "sea-conditions-report-salt"
+
     cors_origins: str = "http://localhost:3000"
 
     @field_validator("database_url")
