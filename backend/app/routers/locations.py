@@ -77,13 +77,23 @@ def get_location(slug: str, db: Session = Depends(get_db)):
 
 
 def _client_ip(request: Request) -> str:
-    """Render 在 proxy 後面：有 X-Forwarded-For 取第一個，否則用連線來源。"""
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        first = xff.split(",")[0].strip()
-        if first:
-            return first
+    """Render 前面有 Cloudflare：X-Forwarded-For 第一個值可偽造，不採用。
+
+    依序取 True-Client-IP、CF-Connecting-IP，最後才用連線來源。
+    """
+    for name in ("true-client-ip", "cf-connecting-ip"):
+        v = (request.headers.get(name) or "").strip()
+        if v:
+            return v
     return request.client.host if request.client else "unknown"
+
+
+def _supports_activity(activities, kind: str) -> bool:
+    """同前端 lib/sea.ts supportsActivity：潛水看 scuba/freedive/snorkel，衝浪看 surf。"""
+    acts = activities or []
+    if kind == "surf":
+        return "surf" in acts
+    return any(a in ("scuba", "freedive", "snorkel") for a in acts)
 
 
 def _ip_hash(ip: str) -> str:
@@ -100,6 +110,8 @@ def _get_location(db: Session, slug: str) -> Location:
 @router.post("/locations/{slug}/reports", response_model=ReportOut, status_code=201)
 def create_report(slug: str, body: ReportIn, request: Request, db: Session = Depends(get_db)):
     loc = _get_location(db, slug)
+    if not _supports_activity(loc.activities, body.activity):
+        raise HTTPException(status_code=422, detail="這個地區不支援這項活動的回報")
     ip_hash = _ip_hash(_client_ip(request))
 
     dup = db.scalar(

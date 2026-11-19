@@ -3,7 +3,14 @@ from __future__ import annotations
 import datetime as dt
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    field_validator,
+    model_validator,
+)
 
 # Python 3.9 相容：用 Optional[...] / List[...]，不用 `X | None`。
 
@@ -136,7 +143,7 @@ class ReportIn(BaseModel):
     date: dt.date
     activity: Literal["dive", "surf"]
     feeling: Literal["good", "ok", "bad"]
-    visibility_m: Optional[int] = Field(default=None, ge=0, le=40)
+    visibility_m: Optional[StrictInt] = Field(default=None, ge=0, le=30)
     note: Optional[str] = None
 
     @field_validator("note")
