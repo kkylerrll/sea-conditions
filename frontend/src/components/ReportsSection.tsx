@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import ReportForm from "@/components/ReportForm";
 import { getReports } from "@/lib/api";
-import { relativeDayWord, shortDateLabel, todayInTaipei } from "@/lib/format";
+import { relativeDayWord, shortDateLabel, timeInTaipei, todayInTaipei } from "@/lib/format";
 import { hasReported } from "@/lib/reported";
 import { ACTIVITY_KIND_ZH, type ActivityKind, RATING_HEX, hasBothKinds, supportsActivity } from "@/lib/sea";
 import type { ReportFeeling, ReportSummary } from "@/lib/types";
@@ -143,7 +143,7 @@ export default function ReportsSection({
       </button>
     ) : null;
 
-  const subtitle = both ? "含潛水與衝浪 · 回報只供參考" : "回報只供參考";
+  const subtitle = both ? "含潛水與衝浪 · 回報只供參考 · 不用登入、匿名" : "回報只供參考 · 不用登入、匿名";
 
   return (
     <section
@@ -190,7 +190,7 @@ export default function ReportsSection({
             }}
             className={`${PRIMARY_BTN} mt-3`}
           >
-            好
+            完成
           </button>
         </div>
       )}
@@ -224,7 +224,7 @@ export default function ReportsSection({
             <p ref={summaryHeadingRef} tabIndex={-1} className="text-base font-bold text-slate-900 outline-none">
               近 7 天還沒有人回報
             </p>
-            <p className="mt-1 text-sm text-slate-600">今天下過水嗎？當第一個回報的人。</p>
+            <p className="mt-1 text-sm text-slate-600">今天下過水嗎？不用登入，當第一個回報的人。</p>
             {reportButton && <div className="mt-3 [&>*]:mt-0">{reportButton}</div>}
           </>
         ) : (
@@ -338,7 +338,9 @@ function SummaryBody({
                   {FEELING_META[r.feeling].label}
                 </span>
                 <span className="font-semibold text-slate-800">{ACTIVITY_KIND_ZH[r.activity]}</span>
-                <span className="text-slate-600">· {dayText(r.date)}</span>
+                <span className="text-slate-600">
+                  · {dayText(r.date)} <span className="tabular-nums">{timeInTaipei(r.created_at)}</span>
+                </span>
                 {r.activity === "dive" && r.visibility_m != null && (
                   <span className="tabular-nums text-slate-600">· 能見度 {r.visibility_m} m</span>
                 )}
@@ -355,7 +357,7 @@ function SummaryBody({
           aria-expanded={expanded}
           className="min-h-11 cursor-pointer rounded text-sm font-semibold text-ocean-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ocean-600"
         >
-          {expanded ? "收起" : `看全部 ${recent.length} 則`}
+          {expanded ? "收起" : count > recent.length ? `看最近 ${recent.length} 則` : `看全部 ${recent.length} 則`}
         </button>
       )}
       {expanded && count > recent.length && <p className="text-xs text-slate-600">只列出最近 10 則。</p>}

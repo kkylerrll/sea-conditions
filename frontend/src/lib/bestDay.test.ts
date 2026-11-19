@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { bestDay, cellFor, collectDates, dayStats, rankDays, scoreFor, sortRows } from "./bestDay";
+import { bestDay, cellFor, collectDates, dayStats, excludedToday, rankDays, scoreFor, sortRows } from "./bestDay";
 import type { Condition, Location, Rating } from "./types";
 
 type Day = [date: string, rating: Rating, score: number | null];
@@ -128,5 +128,31 @@ describe("sortRows", () => {
     const locs = [loc("b", "蘭嶼", [[D1, "green", 80]]), loc("a", "綠島", [[D1, "green", 80]])];
     const expected = ["蘭嶼", "綠島"].sort((x, y) => x.localeCompare(y, "zh-Hant"));
     expect(sortRows(locs, D1, "dive").map((l) => l.name)).toEqual(expected);
+  });
+});
+
+describe("excludedToday（台灣 18:00 後今天不參與最佳日）", () => {
+  // 台灣 = UTC+8
+  const at = (hhmmTaipei: string) => new Date(`2026-11-19T${hhmmTaipei}:00+08:00`);
+
+  it("17:59 還算今天；18:00 起排除今天", () => {
+    expect(excludedToday(at("17:59"), D1)).toBeNull();
+    expect(excludedToday(at("18:00"), D1)).toBe(D1);
+    expect(excludedToday(at("23:30"), D1)).toBe(D1);
+    expect(excludedToday(at("00:10"), D1)).toBeNull();
+  });
+
+  it("今天最好但已過 18:00 → 最佳日改選其他天；今天仍在 stats 裡", () => {
+    const locs = [loc("a", "甲", [[D1, "green", 95], [D2, "yellow", 50], [D3, "red", 10]])];
+    const stats = dayStats(locs, [D1, D2, D3], "dive");
+    expect(bestDay(stats)?.date).toBe(D1);
+    expect(bestDay(stats, D1)?.date).toBe(D2);
+    expect(rankDays(stats, D1).map((s) => s.date)).toEqual([D2, D3]);
+    expect(stats.map((s) => s.date)).toContain(D1);
+  });
+
+  it("只剩今天 → 沒有最佳日", () => {
+    const locs = [loc("a", "甲", [[D1, "green", 95]])];
+    expect(bestDay(dayStats(locs, [D1], "dive"), D1)).toBeNull();
   });
 });

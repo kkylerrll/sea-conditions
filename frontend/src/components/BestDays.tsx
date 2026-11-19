@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Freshness from "@/components/Freshness";
 import FavoritesEmpty from "@/components/FavoritesEmpty";
-import { bestDay, cellFor, collectDates, dayStats, sortRows, type DayStat } from "@/lib/bestDay";
+import { bestDay, cellFor, collectDates, dayStats, excludedToday, sortRows, type DayStat } from "@/lib/bestDay";
 import { favoritesFilterRemembered, rememberFavoritesFilter, useFavorites } from "@/lib/favorites";
 import { relativeDayWord, shortDateLabel, todayInTaipei } from "@/lib/format";
 import {
@@ -33,6 +33,12 @@ function dayTitle(date: string, today: string): string {
 function weekdayPart(date: string): string {
   const s = shortDateLabel(date);
   return s.slice(s.indexOf("（"));
+}
+
+/** 週六、週日：週幾文字用 coral-700 粗體標出（只是視覺強調，不影響排名）。 */
+function isWeekend(date: string): boolean {
+  const d = new Date(`${date}T00:00:00Z`).getUTCDay();
+  return d === 0 || d === 6;
 }
 
 function dayWord(date: string, today: string): string {
@@ -98,8 +104,13 @@ export default function BestDays({
   }, [supported, filter, favOn, favSet]);
 
   const stats = useMemo(() => dayStats(rows, dates, activity), [rows, dates, activity]);
-  const best = useMemo(() => bestDay(stats), [stats]);
-  const selected = picked && dates.includes(picked) ? picked : best?.date ?? dates[0];
+  // 台灣 18:00 以後，今天不參與最佳日排名（仍顯示在表格與日期格）
+  const exclude = excludedToday(new Date(), today);
+  const best = useMemo(() => bestDay(stats, exclude), [stats, exclude]);
+  const selected =
+    picked && dates.includes(picked)
+      ? picked
+      : best?.date ?? dates.find((d) => d !== exclude) ?? dates[0];
   const sorted = useMemo(() => (selected ? sortRows(rows, selected, activity) : rows), [rows, selected, activity]);
 
   const regionName = favOn ? "收藏" : filter === "全部" ? "全部區域" : filter;
@@ -317,7 +328,11 @@ function DayPicker({
                         : ""}
                     </span>
                   </span>
-                  <span className="text-xs text-slate-600 sm:text-sm sm:font-bold sm:text-slate-900">
+                  <span
+                    className={`text-xs sm:text-sm ${
+                      isWeekend(s.date) ? "font-bold text-coral-700" : "text-slate-600 sm:font-bold sm:text-slate-900"
+                    }`}
+                  >
                     {weekdayPart(s.date)}
                   </span>
                   {isBest && (
@@ -407,7 +422,9 @@ function Table({
                     {dayWord(d, today)}
                     {on && <span aria-hidden="true">▼</span>}
                   </span>
-                  <span className="block font-normal">{weekdayPart(d)}</span>
+                  <span className={`block ${isWeekend(d) ? "font-bold text-coral-700" : "font-normal"}`}>
+                    {weekdayPart(d)}
+                  </span>
                 </th>
               );
             })}

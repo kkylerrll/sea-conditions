@@ -94,6 +94,8 @@ export function FavoritesProvider({
     (next: string[]) => {
       const cleaned = next.filter((s) => valid.has(s));
       setStored(cleaned);
+      // 收藏清空時，「只看收藏」的記憶也一起刪掉，避免下次進來停在空的收藏
+      if (cleaned.length === 0) rememberFavoritesFilter(false);
       // 回傳 false 表示這次已經顯示了「存不進去」的提示，呼叫端不要再蓋掉它
       try {
         window.localStorage.setItem(KEY, JSON.stringify(cleaned));

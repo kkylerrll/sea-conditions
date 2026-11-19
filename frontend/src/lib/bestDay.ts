@@ -53,10 +53,28 @@ export function dayStats(locs: Location[], dates: string[], kind: ActivityKind):
   });
 }
 
+/** 台灣時間幾點後，「今天」不再參與最佳日排名（太晚了，來不及下水）。 */
+export const TODAY_CUTOFF_HOUR = 18;
+
+/** 台灣現在的小時（0–23）。 */
+function taipeiHour(now: Date): number {
+  const h = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Taipei",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).format(now);
+  return Number(h) % 24;
+}
+
+/** 台灣時間 18:00 以後回傳 today（要排除的日期），否則 null。now 由呼叫端傳入，方便測試。 */
+export function excludedToday(now: Date, today: string): string | null {
+  return taipeiHour(now) >= TODAY_CUTOFF_HOUR ? today : null;
+}
+
 /** 依 綠燈數 → 黃燈數 → 平均分數 → 日期早 排序；全部 unknown 的天不參與。 */
-export function rankDays(stats: DayStat[]): DayStat[] {
+export function rankDays(stats: DayStat[], exclude: string | null = null): DayStat[] {
   return stats
-    .filter((s) => !s.allUnknown)
+    .filter((s) => !s.allUnknown && s.date !== exclude)
     .sort(
       (a, b) =>
         b.green - a.green ||
@@ -66,9 +84,9 @@ export function rankDays(stats: DayStat[]): DayStat[] {
     );
 }
 
-/** 最佳日：排第一且至少有一個綠燈或黃燈；否則 null。 */
-export function bestDay(stats: DayStat[]): DayStat | null {
-  const top = rankDays(stats)[0];
+/** 最佳日：排第一且至少有一個綠燈或黃燈；否則 null。exclude 的那天不參與（仍可顯示在表格）。 */
+export function bestDay(stats: DayStat[], exclude: string | null = null): DayStat | null {
+  const top = rankDays(stats, exclude)[0];
   return top && top.green + top.yellow > 0 ? top : null;
 }
 

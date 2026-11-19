@@ -20,6 +20,7 @@ const FEELINGS: { value: ReportFeeling; label: string; hint: string; tone: "gree
 
 const VIS_STEPS: { value: number; label: string; short: string }[] = [
   { value: 2, label: "≤2", short: "≤2" },
+  { value: 3, label: "3", short: "3" },
   { value: 5, label: "5", short: "5" },
   { value: 8, label: "8", short: "8" },
   { value: 10, label: "10", short: "10" },
@@ -125,7 +126,7 @@ export default function ReportForm({
     if (!error) return null;
     switch (error.kind) {
       case 409:
-        return `你已經回報過${error.day === "today" ? "今天" : "昨天"}${name}的${ACTIVITY_KIND_ZH[error.activity]}了，同一項活動每天只能回報一次。`;
+        return `${error.day === "today" ? "今天" : "昨天"}${name}的${ACTIVITY_KIND_ZH[error.activity]}已經有一筆從這個網路送出的回報。同一個網路每項活動每天只能回報一次（共用 Wi-Fi 也算同一個）。`;
       case 429:
         return "今天的回報次數用完了（每天最多 5 則），明天再來。";
       case 422:
@@ -296,7 +297,7 @@ export default function ReportForm({
         {activity === "dive" && (
           <fieldset>
             <legend className="mb-2 text-sm font-bold text-slate-900">水下能見度（選填）</legend>
-            <div className="grid grid-cols-4 gap-2 sm:flex sm:flex-wrap">
+            <div className="grid grid-cols-5 gap-2 sm:flex sm:flex-wrap">
               {VIS_STEPS.map((s) => {
                 const on = vis === s.value;
                 return (

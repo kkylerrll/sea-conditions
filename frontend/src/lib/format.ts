@@ -60,3 +60,16 @@ export function relativeDayWord(iso: string, today: string = todayInTaipei()): s
   if (iso === isoPlusDays(today, 1)) return "明天";
   return null;
 }
+
+/** ISO 時間轉台灣時間 HH:mm；解析不了回空字串。 */
+export function timeInTaipei(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Taipei",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(d);
+}
