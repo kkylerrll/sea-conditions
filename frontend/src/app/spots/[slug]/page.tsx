@@ -122,7 +122,7 @@ export default async function SpotPage({
                   href={directionsUrl(location.lat, location.lon)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-coral-400 px-5 py-1.5 text-sm font-bold text-white outline-none transition hover:bg-[#e66a4d] focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-abyss-700"
+                  className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-coral-700 px-5 py-1.5 text-sm font-bold text-white outline-none transition hover:bg-[#a03b25] focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-abyss-700"
                 >
                   <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                     <path d="M10 2C6.7 2 4 4.7 4 8c0 4.2 5.3 9.4 5.6 9.7a.6.6 0 0 0 .8 0C10.7 17.4 16 12.2 16 8c0-3.3-2.7-6-6-6Zm0 8.2A2.2 2.2 0 1 1 10 5.8a2.2 2.2 0 0 1 0 4.4Z" />
